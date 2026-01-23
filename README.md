@@ -25,17 +25,15 @@ python -m ipykernel install --user --name mea_analysis --display-name "Python 3.
 ### 4. Configuration
 Before running the analysis, you must configure the script to match your hardware parameters:
 
-1. Open `MUA_STA_Exec.py` in your text editor.
-2. Locate the **Global Variables** section at the top of the file.
-3. Update the `SETUP`, `TOTAL_CHANNELS`, and `TRIGGER_CHANNEL` variables as needed.
+1. Open MUA_STA_Exec.py in your text editor.
+2. Locate the Global Variables section at the top of the file.
+3. Update the SETUP, TOTAL_CHANNELS, and TRIGGER_CHANNEL variables as needed.
 
-**Example Configuration:**
+Example Configuration (MUA_STA_Exec.py):
 
-# MUA_STA_Exec.py (Global Variables Section)
-# ----------------------------------------
-# SETUP = "MEA2"           # Options: MEA1, MEA2, MEA3
-# TOTAL_CHANNELS = 256     # Total number of channels in your recording
-# TRIGGER_CHANNEL = 256    # The specific channel used for the stimulus trigger
+SETUP = "MEA2"           # Options: MEA1, MEA2, MEA3
+TOTAL_CHANNELS = 256     # Total number of channels in your recording
+TRIGGER_CHANNEL = 256    # The specific channel used for the stimulus trigger
 
 Note: Once these variables are saved, you will not need to modify them again unless your hardware setup changes.
 
