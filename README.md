@@ -36,11 +36,11 @@ Ensure the following files are in the same directory as your script:
 ## 🚀 How to Run
 
 ### 🐧 Linux
-1. Make the launch script executable: chmod +x launch_analysis.sh
-2. Run the script: ./launch_analysis.sh
+1. Make the launch script executable: chmod +x MUA_STA_Exec.sh
+2. Run the script: ./MUA_STA_Exec.sh
 
 ### 🪟 Windows
-1. Double-click launch_analysis.bat
+1. Double-click MUA_STA_Exec.bat
 
 ---
 
