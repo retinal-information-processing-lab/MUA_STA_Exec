@@ -19,7 +19,7 @@ To ensure all dependencies (especially the GUI backends and multiprocessing hand
    conda install numpy matplotlib tqdm -y
    pip install spikeinterface[full] PyQt5
 
-5. **Setup **:
+5. **Setup**:
    Open MUA_STA_Exec.py and tune the SETUP global variable to your setup. You may also need to adapt other global variables (TOTAL_CHANNELS,TRIGGER_CHANNEL)
    Once done you won't need it to do it for this setup
 ---
