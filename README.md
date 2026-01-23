@@ -24,11 +24,19 @@ To ensure all GUI backends and multiprocessing handlers work correctly, we recom
 
 ```bash conda install ipykernel -y python -m ipykernel install --user --name mea_analysis --display-name "Python 3.10 (MEA)" ```
 
+### 4. Configuration
+Before running the analysis, you must configure the script to match your hardware parameters:
 
-### 3. Setup :
+1. Open MUA_STA_Exec.py in your text editor.
+2. Locate the Global Variables section at the top of the file.
+3. Update the SETUP variable and hardware parameters as needed:
 
-   Open MUA_STA_Exec.py and tune the SETUP global variable to your setup. You may also need to adapt other global variables (TOTAL_CHANNELS,TRIGGER_CHANNEL)
-   Once done you won't need it to do it for this setup
+# Example Global Variables to adjust:
+# SETUP = "Your_Setup_Name"
+# TOTAL_CHANNELS = 64
+# TRIGGER_CHANNEL = 1
+
+Note: Once these variables are saved, you will not need to adjust them again for this specific hardware setup.
 ---
 
 ## 📂 Required Files
