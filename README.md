@@ -16,7 +16,9 @@ To ensure all GUI backends and multiprocessing handlers work correctly, we recom
 
 ```bash conda env create -f environment.yml ```
 
-### 2. Activate the Environment ```bash conda activate mea_analysis ```
+### 2. Activate the Environment 
+
+```bash conda activate mea_analysis ```
 
 ### 3. (Optional) Register as Jupyter Kernel If you plan to use this environment with Jupyter Notebooks:
 
