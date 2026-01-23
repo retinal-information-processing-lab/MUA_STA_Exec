@@ -8,18 +8,22 @@ This script provides a high-performance solution for processing 256-channel Micr
 
 To ensure all dependencies (especially the GUI backends and multiprocessing handlers) work correctly, follow these steps to create a dedicated Conda environment:
 
-1. **Open your Terminal** (Linux) or **Anaconda Prompt** (Windows).
-2. **Create the environment**:
-   conda create -n mea_analysis python=3.10 -y
-   
-3. **Activate the environment**:
-   conda activate mea_analysis
-   
-4. **Install dependencies**:
-   conda install numpy matplotlib tqdm -y
-   pip install spikeinterface[full] PyQt5
+## 🛠️ Quick Setup
 
-5. **Setup**:
+To ensure all GUI backends and multiprocessing handlers work correctly, we recommend using the provided `environment.yml` file.
+
+### 1. Create the Environment Open your Terminal or Anaconda Prompt in the project folder and run:
+
+```bash conda env create -f environment.yml ```
+
+### 2. Activate the Environment ```bash conda activate mea_analysis ```
+
+### 3. (Optional) Register as Jupyter Kernel If you plan to use this environment with Jupyter Notebooks:
+
+```bash conda install ipykernel -y python -m ipykernel install --user --name mea_analysis --display-name "Python 3.10 (MEA)" ```
+
+
+### 3. Setup
    Open MUA_STA_Exec.py and tune the SETUP global variable to your setup. You may also need to adapt other global variables (TOTAL_CHANNELS,TRIGGER_CHANNEL)
    Once done you won't need it to do it for this setup
 ---

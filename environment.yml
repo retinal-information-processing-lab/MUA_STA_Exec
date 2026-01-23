@@ -1,0 +1,13 @@
+name: mea_analysis
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - matplotlib
+  - tqdm
+  - pip
+  - pip:
+    - "spikeinterface[full]"
+    - PyQt5
