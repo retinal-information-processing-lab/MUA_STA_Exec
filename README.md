@@ -25,7 +25,8 @@ To ensure all GUI backends and multiprocessing handlers work correctly, we recom
 ```bash conda install ipykernel -y python -m ipykernel install --user --name mea_analysis --display-name "Python 3.10 (MEA)" ```
 
 
-### 3. Setup
+### 3. Setup :
+
    Open MUA_STA_Exec.py and tune the SETUP global variable to your setup. You may also need to adapt other global variables (TOTAL_CHANNELS,TRIGGER_CHANNEL)
    Once done you won't need it to do it for this setup
 ---
