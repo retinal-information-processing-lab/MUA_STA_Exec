@@ -469,9 +469,8 @@ if __name__ == "__main__" :
     
     
 
-    	plt.subplots_adjust(wspace=0.1, hspace=0.1, left=0.01, right=0.99, bottom=0.01, top=0.99)
-    
-    	plt.show(block = False)
+        plt.subplots_adjust(wspace=0.1, hspace=0.1, left=0.01, right=0.99, bottom=0.01, top=0.99)
+        plt.show(block = False)
         
 
     plot_stitched_sta(processed_data, mapping)
