@@ -124,3 +124,4 @@ dmypy.json
 .pyre/
 
 binarysource1000Mbits
+*.lnk
