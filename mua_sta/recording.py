@@ -86,7 +86,7 @@ def open_info(
 def read_channel(
     info: RecordingInfo,
     channel_index: int,
-    progress: Callable[[float], None] | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
     chunk_samples: int = 4_000_000,
 ) -> np.ndarray:
     """One channel of the recording, in raw ADC levels (``uint16``, 32768 = 0 V).
@@ -105,7 +105,7 @@ def read_channel(
             stop = min(start + chunk_samples, info.n_samples)
             out[start:stop] = frames[start:stop, channel_index]
             if progress is not None:
-                progress(stop / info.n_samples)
+                progress(stop, info.n_samples, "reading the trigger channel")
     finally:
         mm._mmap.close()
     return out

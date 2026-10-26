@@ -7,7 +7,7 @@ multi-unit receptive fields while the retina is still alive.
 It handles both stimuli the standard analysis pipeline supports:
 
 - **Checkerboard** — checks drawn from the `binarysource1000Mbits` bit stream.
-- **Shifting white noise (SWN)** — a `.bin` frame library played in the order given by a `.vec`.
+- **Shifting white noise (SWN)** — a bin file of noise frames, shown in the order a vec file gives.
 
 ![the window](ResourcesAndTools/window.png)
 
@@ -53,7 +53,7 @@ The GUI remembers its settings in `~/.mua_sta/config.json`, and its log goes to
 ## Using it
 
 **Stimulus**, at the top: a two-position switch. *Checkerboard* asks for the binary source and
-how many squares per side; *Shifting white noise* asks for the frame library and the playlist
+how many squares per side; *Shifting white noise* asks for the vec file and the bin file
 and nothing else — the lattice is measured from the frames themselves and reported on the
 status line. The stimulus frequency is read off the triggers either way.
 
@@ -77,7 +77,20 @@ runs just that line, an **✕** that forgets it, and one button to look at what 
 trigger trace, a stimulus frame, or the results.
 
 **RUN** does the lot. If any of it has already been done it asks first whether to redo
-everything from the start; to redo only one line, use that line's ▶.
+everything from the start; to redo only one line, use that line's ▶. While something is
+running the same button reads **STOP**.
+
+**The status line** reports like `tqdm` does — what is running, how far along it is, how long
+it has taken and how much is left: `detecting spikes  47%  00:33<00:36`. The bar below fills
+with it, or spins for the few steps that cannot say how long they are. The estimate comes from
+the rate so far, so it settles quickly: on a 30-minute recording the spike detection predicted
+1:16 at 5 % and finished in 1:09.
+
+**STOP** ends the run at the next piece of work, keeping whatever already finished. Spike
+detection is handed to a pool of processes that cannot be interrupted once started, so the
+recording is detected in pieces of about four minutes each and stopping takes at most one of
+them; the noise levels are measured once over the whole recording and shared, so detecting in
+pieces gives the same spikes as detecting in one go.
 
 The **gear** holds what is rarely worth touching: the MUA detection band, threshold, peak sign
 and job count; the sequence length and STA depth; whitening and its regularisation; the
@@ -132,8 +145,8 @@ is in the gear: it only sets the micrometres the result is reported in — 16 px
 
 ### Shifting white noise
 
-The `.vec` is the playlist — one row per displayed frame, column 1 being the index into the
-`.bin`. A sequence is a novel half then a repeated half; the novel frames are the lower half of
+The vec file says what was shown when — one row per displayed frame, column 1 being the index
+into the bin file. A sequence is a novel half then a repeated half; the novel frames are the lower half of
 the index range, **shuffled**, so the `.vec` is what tells you which frame was shown when.
 
 Each frame is a checkerboard whose grid is offset by a whole number of *shift steps*, a shift

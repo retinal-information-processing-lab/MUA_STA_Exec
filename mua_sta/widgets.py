@@ -6,6 +6,7 @@ from typing import Callable
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from .progress import Cancelled, Reporter
 from .theme import ACTION_STYLE, DIM, LOG_COLOURS, SEGMENT_STYLE, STATUS_COLOURS
 
 
@@ -203,21 +204,29 @@ def human_size(n_bytes: int) -> str:
 
 
 class Worker(QtCore.QThread):
-    """Runs one callable off the GUI thread, reporting progress, log lines and the outcome."""
+    """Runs one callable off the GUI thread, reporting progress, messages and the outcome."""
 
-    progressed = QtCore.pyqtSignal(str)
+    progressed = QtCore.pyqtSignal(str, float)      # text, fraction (-1: cannot say)
     logged = QtCore.pyqtSignal(str, str)
     finished_ok = QtCore.pyqtSignal()
+    cancelled = QtCore.pyqtSignal()
     failed = QtCore.pyqtSignal(str)
 
-    def __init__(self, work: Callable[[Callable[[str], None]], None], parent=None):
+    def __init__(self, work: Callable[[Reporter], None], parent=None):
         super().__init__(parent)
         self._work = work
+        self.reporter = Reporter(self.progressed.emit)
+
+    def stop(self):
+        """Ask the work to stop; it ends at the running step's next progress call."""
+        self.reporter.cancel()
 
     def run(self):
         try:
-            self._work(self.progressed.emit)
-        except Exception as error:                      # shown in the log, never a traceback popup
+            self._work(self.reporter)
+        except Cancelled:
+            self.cancelled.emit()
+        except Exception as error:                  # shown in the log, never a traceback popup
             self.failed.emit(f"{type(error).__name__}: {error}")
         else:
             self.finished_ok.emit()

@@ -206,13 +206,14 @@ class CheckerboardSpec:
                 "n_checks_x": self.n_checks_x, "n_checks_y": self.n_checks_y,
                 "n_frames": n_frames}
 
-    def build(self, n_frames: int, progress: Callable[[str], None] | None = None) -> np.ndarray:
+    def build(self, n_frames: int,
+              progress: Callable[[int, int, str], None] | None = None) -> np.ndarray:
         """``(n_frames, rows, cols)`` uint8 in 0..255, as the retina saw it."""
         rows, cols = self.n_checks_y, self.n_checks_x
         n_bits = n_frames * rows * cols
         n_bytes = (n_bits + 7) // 8
         if progress is not None:
-            progress(f"unpacking {n_frames} checkerboard frames from {self.source_path.name}")
+            progress(0, n_frames, "unpacking the checkerboard")
         with open(self.source_path, "rb") as f:
             raw = np.frombuffer(f.read(n_bytes), dtype=np.uint8)
         if raw.size < n_bytes:
@@ -280,7 +281,8 @@ class SwnSpec:
                 "vec": file_identity(self.vec_path), "mea": self.mea,
                 "n_frames": n_frames, **lattice}
 
-    def build(self, n_frames: int, progress: Callable[[str], None] | None = None) -> np.ndarray:
+    def build(self, n_frames: int,
+              progress: Callable[[int, int, str], None] | None = None) -> np.ndarray:
         """The novel frames in the order they were shown, ``(n_frames, cells, cells)`` uint8.
 
         Stops as soon as ``n_frames`` have been collected, so a recording that was cut short
@@ -310,9 +312,9 @@ class SwnSpec:
                 # The optical transform is a view, so only n_cells**2 values are ever gathered.
                 view = apply_optical_transform(stimulus.stored(int(index)), transform)
                 out[position] = view[picker]
-                if progress is not None and position - step >= 2000:
+                if progress is not None and position - step >= 500:
                     step = position
-                    progress(f"reading SWN frames: {position}/{n_frames}")
+                    progress(position, n_frames, "reading the noise frames")
         if rig(self.mea).invert_polarity:
             out = 255 - out
         self._warn_if_lattice_looks_wrong(out)

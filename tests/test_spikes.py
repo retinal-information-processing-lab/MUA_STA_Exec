@@ -79,3 +79,45 @@ def test_detect_mua_on_a_small_recording(tmp_path, peak_sign):
     quiet = [int(label) for label in trains.labels if label not in (3, 6)]
     for label in quiet:
         assert trains.get(label).size < 0.2 * planted.size
+
+
+def test_detecting_in_pieces_gives_the_same_spikes(tmp_path, monkeypatch):
+    """Detection is cut up only so a run can be stopped; it must not change what is found.
+
+    The noise levels are measured once over the whole recording and passed to every piece, so
+    the thresholds are identical. What is left is spikeinterface's own chunking, whose
+    boundaries move when the recording it is given is shorter: that costs about one spike in a
+    few thousand, and none at all on a real 200 s window cut into four.
+    """
+    fs, n_channels, n_samples = 20_000.0, 6, 300_000
+    rng = np.random.default_rng(3)
+    signal = rng.normal(0, 20, size=(n_samples, n_channels))
+    for channel in (1, 4):
+        for at in range(300, n_samples - 300, 250):
+            signal[at:at + 6, channel] -= 600 * np.hanning(6)
+    raw = tmp_path / "rec.raw"
+    raw.write_bytes((signal + 32768).astype("<u2").tobytes())
+    info = rec.open_info(raw, n_channels=n_channels, fs=fs)
+
+    monkeypatch.setattr(sp, "SLICE_SECONDS", 1e9)       # one piece
+    whole = sp.detect_mua(info, n_jobs=1)
+    monkeypatch.setattr(sp, "SLICE_SECONDS", 3.0)       # five pieces
+    assert len(sp._slice_bounds(n_samples, fs)) > 1
+    pieces = sp.detect_mua(info, n_jobs=1)
+
+    np.testing.assert_array_equal(pieces.labels, whole.labels)
+    assert abs(pieces.total - whole.total) <= max(2, 0.001 * whole.total)
+    for label in whole.labels:
+        a, b = whole.get(int(label)), pieces.get(int(label))
+        shared = np.intersect1d(np.round(a, 5), np.round(b, 5)).size
+        most = max(a.size, b.size)
+        # a spike in a thousand, and at least one, for the channels that barely fire
+        assert most - shared <= max(1, 0.001 * most), int(label)
+
+
+def test_slice_bounds_cover_the_recording_exactly():
+    bounds = sp._slice_bounds(36_976_000, 20_000.0)
+    assert bounds[0][0] == 0 and bounds[-1][1] == 36_976_000
+    assert all(a[1] == b[0] for a, b in zip(bounds, bounds[1:]))     # no gap, no overlap
+    assert 1 < len(bounds) <= sp.MAX_SLICES
+    assert sp._slice_bounds(1000, 20_000.0) == [(0, 1000)]           # a short one is not cut

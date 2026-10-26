@@ -105,7 +105,7 @@ def compute_sta(
     counts: np.ndarray,
     stimulus: np.ndarray,
     temporal_dimension: int = DEFAULT_TEMPORAL_DIMENSION,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> np.ndarray:
     """Spike-triggered average of every electrode: ``(n_electrodes, T, rows, cols)``.
 
@@ -139,7 +139,7 @@ def compute_sta(
         for lag in range(T):
             sta[:, lag] += weights @ frames[lag:lag + n_frames - T]
         if progress is not None:
-            progress(f"STA: sequence {sequence + 1}/{n_sequences}")
+            progress(sequence + 1, n_sequences, "computing the STA")
 
     totals = counts.sum(axis=(1, 2))
     for i, total in enumerate(totals):
@@ -177,7 +177,7 @@ def peak_components(sta: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray
 def stimulus_covariance(
     stimulus: np.ndarray,
     chunk: int = 2048,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> np.ndarray:
     """Covariance of the stimulus's pixels, unregularised.
 
@@ -195,7 +195,7 @@ def stimulus_covariance(
         gram += block.T.astype(np.float64) @ block
         total += block.sum(axis=0, dtype=np.float64)
         if progress is not None:
-            progress(f"stimulus covariance: {min(start + chunk, n_frames)}/{n_frames} frames")
+            progress(min(start + chunk, n_frames), n_frames, "stimulus covariance")
     mean = total / n_frames
     return gram / n_frames - np.outer(mean, mean)
 

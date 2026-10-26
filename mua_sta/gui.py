@@ -28,7 +28,7 @@ from .dialogs import FramePreview, SettingsDialog, TriggerPlot
 from .pipeline import GROUP_LABELS, GROUPS, Pipeline
 from .results import ResultsWindow
 from .rigs import RIGS, rig
-from .theme import DIM, apply_dark_theme
+from .theme import ACTION_STYLE, DIM, STOP_STYLE, apply_dark_theme
 from .widgets import (FileRow, StatusLine, StepRow, Worker, action_button, button, combo_box,
                       segmented, spin_box)
 
@@ -162,14 +162,14 @@ class Window(QtWidgets.QMainWindow):
         page = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(page)
         form.setContentsMargins(0, 4, 0, 0)
-        self.bin_row = FileRow(self.config.swn_bin, "Select the noise frame library",
-                               "Stimulus bins (*.bin);;All files (*)")
+        self.bin_row = FileRow(self.config.swn_bin, "Select the bin file",
+                               "Bin files (*.bin);;All files (*)")
         self.bin_row.changed.connect(self._on_swn_bin)
-        self.vec_row = FileRow(self.config.swn_vec, "Select the playlist",
-                               "Playlists (*.vec);;All files (*)")
+        self.vec_row = FileRow(self.config.swn_vec, "Select the vec file",
+                               "Vec files (*.vec);;All files (*)")
         self.vec_row.changed.connect(self._on_swn_vec)
-        form.addRow("frame library", self.bin_row)
-        form.addRow("playlist", self.vec_row)
+        form.addRow("Vec file", self.vec_row)
+        form.addRow("Bin file", self.bin_row)
         return page
 
     # -------------------------------------------------------------------- messages
@@ -231,28 +231,53 @@ class Window(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------------- the run
     def _busy(self, busy: bool):
+        """RUN turns into STOP while something runs; the per-line buttons wait their turn."""
         self.progress.setVisible(busy)
-        self.run_button.setEnabled(not busy)
+        self.run_button.setText("STOP" if busy else "RUN")
+        self.run_button.setStyleSheet(STOP_STYLE if busy else ACTION_STYLE)
+        self.run_button.setEnabled(True)
         for row in self.rows.values():
             row.run.setEnabled(not busy)
+            row.drop.setEnabled(not busy)
+        if not busy:
+            self.progress.setRange(0, 0)
 
     def _start(self, work, what: str, then_show: bool = False):
         """Run ``work`` off the GUI thread; ``then_show`` opens the results when it finishes."""
-        if self.worker is not None and self.worker.isRunning():
+        if self._running():
             self._log("Something is already running", "warn")
             return
         self._show_when_done = then_show
         self._busy(True)
         self.status.say(what)
         self.worker = Worker(work)
-        self.worker.progressed.connect(lambda message: self.status.say(message))
+        self.worker.progressed.connect(self._on_progress)
         self.worker.logged.connect(self._log)
         self.worker.finished_ok.connect(self._finished)
+        self.worker.cancelled.connect(self._stopped)
         self.worker.failed.connect(self._failed)
         self.worker.start()
 
+    def _running(self) -> bool:
+        return self.worker is not None and self.worker.isRunning()
+
+    def _on_progress(self, text: str, fraction: float):
+        """Fill the bar when the step can say how far along it is, spin it when it cannot."""
+        if fraction < 0:
+            self.progress.setRange(0, 0)
+        else:
+            self.progress.setRange(0, 1000)
+            self.progress.setValue(int(fraction * 1000))
+        self.status.say(text)
+
     def _on_run(self):
-        """Run everything — asking first if any of it has been done already."""
+        """Run everything — asking first if any of it has been done already. While something
+        is running this same button stops it."""
+        if self._running():
+            self.worker.stop()
+            self.status.say("stopping at the end of the current step…", "warn")
+            self.run_button.setEnabled(False)
+            return
         if not self.pipeline.anything_done():
             self._start(lambda progress: self.pipeline.run_all(progress), "running", True)
         elif self._confirm_redo():
@@ -285,6 +310,12 @@ class Window(QtWidgets.QMainWindow):
         # only what computed an STA opens the results; running the triggers again should not
         if self._show_when_done and self.pipeline.results is not None:
             self._show_results()
+
+    def _stopped(self):
+        self._busy(False)
+        self._log("Stopped. What had finished is kept; the step that was running is not.",
+                  "warn")
+        self._refresh()
 
     def _failed(self, message: str):
         self._busy(False)

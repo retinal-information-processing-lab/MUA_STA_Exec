@@ -22,6 +22,8 @@ ACTION_STYLE = """
     QPushButton:hover { background: #2A6A2A; }
     QPushButton:disabled { background: #3A3A3A; color: #666666; }
 """
+STOP_STYLE = (ACTION_STYLE.replace("#1A4A1A", "#5A1414").replace("#00FF00", "#FF6060")
+              .replace("#2A6A2A", "#7A2020"))
 
 
 def apply_dark_theme(app: QtWidgets.QApplication):

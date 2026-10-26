@@ -59,7 +59,7 @@ DEPENDENCIES = {
     ca.ANALYSIS: (ca.TRIGGERS, ca.SPIKES, ca.STIMULUS),
 }
 
-Progress = Callable[[str], None]
+Progress = Callable[[int, int, str], None]      # done, total, label
 Log = Callable[..., None]
 
 
@@ -308,8 +308,7 @@ class Pipeline:
         info = self.ensure_info()
         self.log(f"Reading channel {self.config.trigger_channel} of {info.path.name} "
                  f"({info.describe()})", "info")
-        fraction = (lambda done: progress(f"trigger channel: {done:.0%}")) if progress else None
-        self.trace = rec.read_channel(info, self.config.trigger_channel, progress=fraction)
+        self.trace = rec.read_channel(info, self.config.trigger_channel, progress=progress)
         self.cache.store(ca.TRACE, step_key, meta={"n_samples": int(self.trace.size)},
                          levels=self.trace)
 
@@ -317,6 +316,8 @@ class Pipeline:
         threshold = self.config.threshold
         self.log(f"Detecting trigger onsets above {threshold} ADC levels "
                  f"({tg.threshold_to_uv(threshold):.0f} µV)", "info")
+        if progress is not None:
+            progress(0, 0, "finding the trigger onsets")
         onsets = tg.detect_onsets(self.trace, threshold)
         self.triggers = tg.sanity_check(onsets, self.config.fs, self.config.maximal_jitter)
         level = "warn" if self.triggers.error_onsets.size else "info"
@@ -394,6 +395,8 @@ class Pipeline:
         repeated = sta_mod.sequence_edges(self.triggers.times, n_sequences,
                                           config.frames_per_sequence, sta_mod.REPEATED_HALF)
         self.log(f"Binning {labels.size} electrodes over {n_sequences} sequences", "info")
+        if progress is not None:
+            progress(0, 0, "binning the spikes")
         counts = sta_mod.bin_all(self.spikes, labels, novel)
         sta_3d = sta_mod.compute_sta(counts, self.stimulus, config.temporal_dimension,
                                      progress=progress)
@@ -403,6 +406,8 @@ class Pipeline:
             self.run(ca.COV, progress)
             self.log(f"Whitening the spatial STAs (one factorisation for all electrodes, "
                      f"sigma = {config.sigma_fraction:.1%} of the pixel variance)", "info")
+            if progress is not None:
+                progress(0, 0, "whitening")
             spatial = sta_mod.whiten(spatial_raw, self.covariance, config.sigma_fraction)
             self._warn_if_whitening_hurt(spatial_raw, spatial)
         raster_times, raster_offsets = sta_mod.raster_trains(self.spikes, labels, repeated)

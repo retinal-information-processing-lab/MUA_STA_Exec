@@ -30,7 +30,7 @@ def window(app, setup):                                             # noqa: F811
     def run_here(work, what, then_show=False):
         """Stand in for the Worker: same thread, same bookkeeping on either side of the work."""
         window._show_when_done = then_show
-        work(lambda message: None)
+        work(lambda done, total, label: None)
         window._finished()
 
     window._start = run_here
@@ -398,3 +398,57 @@ def test_every_tile_carries_its_electrode_number(window):
     drawn = {text.get_text() for text in results.ax_grid.texts}
     assert drawn == {str(int(label)) for label in window.pipeline.results.labels}
     results.close()
+
+
+# ------------------------------------------------------------------ progress and stop
+def test_run_turns_into_stop_while_something_runs(window):
+    assert window.run_button.text() == "RUN"
+    window._busy(True)
+    assert window.run_button.text() == "STOP"
+    assert window.run_button.isEnabled()                # it is the way to stop
+    assert not window.rows["sta"].run.isEnabled()       # the per-line buttons wait
+    window._busy(False)
+    assert window.run_button.text() == "RUN"
+    assert window.rows["sta"].run.isEnabled()
+
+
+def test_the_bar_fills_when_a_step_can_say_how_far_it_is(window):
+    window._on_progress("reading  40%  00:02<00:03", 0.4)
+    assert (window.progress.minimum(), window.progress.maximum()) == (0, 1000)
+    assert window.progress.value() == 400
+    assert "40%" in window.status.text()
+    window._on_progress("detecting  00:05", -1.0)
+    assert window.progress.maximum() == 0               # spinning: it cannot say
+
+
+def test_pressing_stop_asks_the_worker_to_stop(window):
+    stopped = []
+
+    class FakeWorker:
+        """Stands in for a running Worker; it also has to survive the window closing."""
+        def isRunning(self): return True
+        def stop(self): stopped.append(True)
+        def wait(self, _ms): return True
+
+    window.worker = FakeWorker()
+    window._on_run()
+    assert stopped == [True]
+    assert "stopping" in window.status.text()
+    assert not window.run_button.isEnabled()        # asked once, not twice
+
+
+def test_a_stopped_run_keeps_what_finished(window):
+    seed_spikes(window.pipeline)
+    window.pipeline.run(ca.TRACE)
+    window.pipeline.run(ca.TRIGGERS)
+    window._stopped()
+    assert "Stopped" in window.status.text()
+    assert window.pipeline.status(ca.TRACE) is ca.Status.CACHED
+    assert window.pipeline.status(ca.STIMULUS) is ca.Status.MISSING
+    assert window.run_button.text() == "RUN"
+
+
+def test_the_swn_rows_are_named_vec_and_bin(window):
+    labels = {w.text() for w in window.findChildren(QtWidgets.QLabel)}
+    assert "Vec file" in labels and "Bin file" in labels
+    assert "playlist" not in labels and "frame library" not in labels

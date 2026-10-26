@@ -40,12 +40,15 @@ def test_read_channel_is_strided_not_sequential(raw):
 
 
 def test_read_channel_reports_progress_and_chunks_cleanly(raw):
+    """Progress is reported the way tqdm counts: how many of how many, and what is running."""
     path, n_channels, n_samples = raw
     info = rec.open_info(path, n_channels=n_channels)
     seen = []
-    got = rec.read_channel(info, 2, progress=seen.append, chunk_samples=7)
+    got = rec.read_channel(info, 2, progress=lambda *a: seen.append(a), chunk_samples=7)
     np.testing.assert_array_equal(got, 2000 + np.arange(n_samples))
-    assert seen[-1] == pytest.approx(1.0) and len(seen) > 1
+    assert len(seen) > 1
+    assert seen[-1] == (n_samples, n_samples, "reading the trigger channel")
+    assert all(total == n_samples for _, total, _ in seen)
 
 
 def test_read_channel_rejects_a_channel_out_of_range(raw):

@@ -12,6 +12,7 @@ goes through :func:`mua_sta.recording.channel_index_to_label`.
 """
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import Callable
 
@@ -23,6 +24,17 @@ DEFAULT_DETECT_THRESHOLD = 6.0      # in median absolute deviations
 DEFAULT_PEAK_SIGN = "neg"
 DEFAULT_FREQ_MIN = 300.0
 DEFAULT_FREQ_MAX = 6000.0
+
+#: Roughly how much recording to detect in one go, in seconds. Detection is handed to a pool
+#: of processes that cannot be interrupted once it is running, so the recording is cut into a
+#: few pieces: stopping then takes at most one piece instead of the whole recording. The noise
+#: levels are measured once over everything and passed to each piece, so every piece uses the
+#: same thresholds — detecting in pieces then finds the same spikes as detecting in one go,
+#: give or take a waveform lying across a cut, which can cross the threshold on both sides.
+#: With eight pieces that is a handful of spikes in millions, and the receptive fields, their
+#: strength and their layout come out the same (checked on a 30-minute recording).
+SLICE_SECONDS = 240.0
+MAX_SLICES = 16
 
 
 @dataclass(frozen=True)
@@ -72,6 +84,72 @@ def from_peaks(sample_index: np.ndarray, channel_index: np.ndarray, fs: float) -
     return SpikeTrains(labels, offsets, times)
 
 
+class _Place:
+    """Which piece of the recording is being detected, so progress stays monotonic."""
+
+    index = 0
+
+
+def _slice_bounds(n_samples: int, fs: float) -> list[tuple[int, int]]:
+    """Cut the recording into a few pieces of about :data:`SLICE_SECONDS` each."""
+    duration = n_samples / fs
+    count = max(1, min(MAX_SLICES, round(duration / SLICE_SECONDS)))
+    edges = np.linspace(0, n_samples, count + 1).astype(np.int64)
+    return [(int(a), int(b)) for a, b in zip(edges[:-1], edges[1:]) if b > a]
+
+
+@contextlib.contextmanager
+def _reporting_through(progress: Callable[[int, int, str], None] | None,
+                       place: "_Place | None" = None, n_slices: int = 1):
+    """Let spikeinterface's own progress bars drive ours while this block runs.
+
+    spikeinterface measures its passes with ``tqdm`` and offers no callback, so its progress
+    bar class is swapped for one that reports instead of drawing. It wraps only the counting,
+    never the work, and is put back whatever happens — if a future version stops using tqdm
+    there, detection still runs and only the percentage is lost.
+    """
+    if progress is None:
+        yield
+        return
+    from spikeinterface.core import job_tools
+    original = getattr(job_tools, "tqdm", None)
+    if original is None:
+        yield
+        return
+
+    class Reporting(original):
+        def __init__(self, *args, **kwargs):
+            kwargs["disable"] = False       # we need the counting, not the drawing
+            super().__init__(*args, **kwargs)
+
+        def _report(self):
+            if not self.total:
+                return
+            name = (self.desc or "detecting").split(" (")[0]
+            if place is None or not name.startswith("detect"):
+                progress(self.n, self.total, name)
+                return
+            # map this piece's own bar onto the whole recording, so the percentage and the
+            # time left run once from 0 to 100 rather than restarting at every piece
+            inside = 100 * self.n / self.total
+            progress(int(place.index * 100 + inside), n_slices * 100, "detecting spikes")
+
+        def display(self, *args, **kwargs):
+            self._report()
+            return True                     # drawn by us, not by tqdm
+
+        def update(self, n=1):
+            outcome = super().update(n)
+            self._report()
+            return outcome
+
+    job_tools.tqdm = Reporting
+    try:
+        yield
+    finally:
+        job_tools.tqdm = original
+
+
 def detect_mua(
     info: rec.RecordingInfo,
     detect_threshold: float = DEFAULT_DETECT_THRESHOLD,
@@ -80,7 +158,7 @@ def detect_mua(
     freq_max: float = DEFAULT_FREQ_MAX,
     common_reference: bool = True,
     n_jobs: int = 10,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> SpikeTrains:
     """Band-pass, common-reference and detect peaks on every channel of ``info``.
 
@@ -88,22 +166,41 @@ def detect_mua(
     result is cached on the detection parameters alone, so nothing about the stimulus or the
     analysis can force it to run again.
     """
+    import spikeinterface.core as sc
     import spikeinterface.preprocessing as spre
     from spikeinterface.sortingcomponents.peak_detection import detect_peaks
 
     if progress is not None:
-        progress("opening the recording")
+        progress(0, 0, "opening the recording")
     recording = rec.as_spikeinterface(info)
     recording = spre.bandpass_filter(recording, freq_min=freq_min, freq_max=freq_max)
     if common_reference:
         recording = spre.common_reference(recording)
 
     if progress is not None:
-        progress(f"detecting peaks on {info.n_channels} channels")
-    peaks = detect_peaks(
-        recording,
-        method="by_channel",
-        method_kwargs={"peak_sign": peak_sign, "detect_threshold": detect_threshold},
-        job_kwargs={"n_jobs": n_jobs, "progress_bar": False},
-    )
+        progress(0, 0, "measuring the noise")
+    noise_levels = sc.get_noise_levels(recording, return_in_uV=False)
+
+    bounds = _slice_bounds(recording.get_num_samples(), info.fs)
+    method_kwargs = {"peak_sign": peak_sign, "detect_threshold": detect_threshold,
+                     "noise_levels": noise_levels}
+    samples, channels = [], []
+    place = _Place()
+    with _reporting_through(progress, place, len(bounds)):
+        for index, (start, stop) in enumerate(bounds):
+            place.index = index
+            if progress is not None:        # a stopping point between pieces
+                progress(index * 100, len(bounds) * 100, "detecting spikes")
+            found = detect_peaks(
+                recording.frame_slice(start, stop),
+                method="by_channel",
+                method_kwargs=method_kwargs,
+                job_kwargs={"n_jobs": n_jobs, "progress_bar": progress is not None},
+            )
+            samples.append(found["sample_index"] + start)
+            channels.append(found["channel_index"])
+    if progress is not None:
+        progress(len(bounds) * 100, len(bounds) * 100, "detecting spikes")
+    peaks = {"sample_index": np.concatenate(samples) if samples else np.empty(0, dtype=np.int64),
+             "channel_index": np.concatenate(channels) if channels else np.empty(0, dtype=np.int64)}
     return from_peaks(peaks["sample_index"], peaks["channel_index"], info.fs)
