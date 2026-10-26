@@ -274,3 +274,14 @@ def test_stitch_crops_every_tile_the_same_way():
     assert grid.image.shape == (2 * 4 + 1, 2 * 4 + 1)
     assert grid.image[1, 1] == 1.0                      # (4,5) is (1,1) inside the crop
     assert grid.electrode_at(0.5, 0.5, mapping) == 1
+
+
+def test_the_temporal_time_vector_matches_the_pipeline():
+    """One bin per displayed frame, ending at the spike — the same values the standard
+    pipeline's get_temporal_sta_time_vector produces, written so the count is never off."""
+    for depth, frequency in ((30, 30.0), (40, 30.0), (30, 40.0), (17, 59.94)):
+        mine = (np.arange(depth) - (depth - 1)) / frequency
+        pipeline = np.flip(np.arange(0, -depth * (1 / frequency), -(1 / frequency)))
+        assert mine.size == depth
+        np.testing.assert_allclose(mine, pipeline[:depth], atol=1e-12)
+        assert mine[-1] == 0.0

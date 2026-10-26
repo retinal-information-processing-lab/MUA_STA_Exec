@@ -57,7 +57,7 @@ python_bin="$prefix/bin/python"
 [ -x "$python_bin" ] || die "The '$ENV_NAME' environment has no python at $python_bin."
 
 # --- say so now if the environment is broken, rather than in a log nobody reads --------
-if ! "$python_bin" -c "import PyQt6, pyqtgraph, numpy, scipy, spikeinterface" 2>/tmp/mua_sta_check.$$; then
+if ! "$python_bin" -c "import PyQt6, matplotlib, numpy, scipy, spikeinterface" 2>/tmp/mua_sta_check.$$; then
     echo "The '$ENV_NAME' environment is missing something:" >&2
     tail -3 "/tmp/mua_sta_check.$$" >&2
     rm -f "/tmp/mua_sta_check.$$"

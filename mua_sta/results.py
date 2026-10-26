@@ -37,6 +37,7 @@ class ResultsWindow(QtWidgets.QWidget):
         self.log = log
         self.results = None
         self.grid = None
+        self.crop: tuple[int, int, int, int] | None = None
         self.selected: int | None = None
         self.setWindowTitle("MUA STA — results")
         self.resize(1180, 740)
@@ -87,8 +88,9 @@ class ResultsWindow(QtWidgets.QWidget):
             return
         spatial = to_array_frame(self.results.spatial, self.config.mea)
         # the window to crop to is taken from the unwhitened STA, where the fields are plain
-        crop = sta_mod.field_bounds(to_array_frame(self.results.spatial_raw, self.config.mea))
-        self.grid = sta_mod.stitch(spatial, self.results.labels, self.mapping, crop=crop)
+        self.crop = sta_mod.field_bounds(
+            to_array_frame(self.results.spatial_raw, self.config.mea))
+        self.grid = sta_mod.stitch(spatial, self.results.labels, self.mapping, crop=self.crop)
 
         self.ax_grid.clear()
         self.ax_grid.set_xticks([])
@@ -141,15 +143,16 @@ class ResultsWindow(QtWidgets.QWidget):
         for spine in self.ax_cell.spines.values():
             spine.set_visible(False)
         cell = to_array_frame(results.spatial[index], self.config.mea)
-        if crop_box := sta_mod.field_bounds(
-                to_array_frame(results.spatial_raw, self.config.mea)):
-            r0, r1, c0, c1 = crop_box
+        if self.crop is not None:
+            r0, r1, c0, c1 = self.crop
             cell = cell[r0:r1, c0:c1]
         self.ax_cell.imshow(cell, cmap=CMAP, vmin=-1, vmax=1, origin="lower",
                             interpolation="nearest")
 
-        # the pipeline's time vector: one bin per frame, ending at the spike
-        time = np.flip(np.arange(0, -depth / frequency, -1 / frequency))[:depth]
+        # the standard pipeline's time vector, one bin per displayed frame ending at the
+        # spike. Written from the bin index rather than as a backwards arange, which is the
+        # same values exactly without depending on where a float step happens to stop.
+        time = (np.arange(depth) - (depth - 1)) / frequency
         self.ax_time.clear()
         self.ax_time.axhline(0, color="#BBBBBB", linewidth=0.8)
         self.ax_time.plot(time, results.temporal[index], color="#D1495B", linewidth=1.6)

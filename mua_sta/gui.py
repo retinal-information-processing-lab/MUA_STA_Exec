@@ -47,6 +47,7 @@ class Window(QtWidgets.QMainWindow):
         self.config = config
         self.pipeline = Pipeline(config, log=self._log)
         self.worker: Worker | None = None
+        self._show_when_done = False
         self.results_window: ResultsWindow | None = None
         self._loading = True
         self._mapping = rec.load_mapping()
@@ -235,10 +236,12 @@ class Window(QtWidgets.QMainWindow):
         for row in self.rows.values():
             row.run.setEnabled(not busy)
 
-    def _start(self, work, what: str):
+    def _start(self, work, what: str, then_show: bool = False):
+        """Run ``work`` off the GUI thread; ``then_show`` opens the results when it finishes."""
         if self.worker is not None and self.worker.isRunning():
             self._log("Something is already running", "warn")
             return
+        self._show_when_done = then_show
         self._busy(True)
         self.status.say(what)
         self.worker = Worker(work)
@@ -251,10 +254,10 @@ class Window(QtWidgets.QMainWindow):
     def _on_run(self):
         """Run everything — asking first if any of it has been done already."""
         if not self.pipeline.anything_done():
-            self._start(lambda progress: self.pipeline.run_all(progress), "running")
+            self._start(lambda progress: self.pipeline.run_all(progress), "running", True)
         elif self._confirm_redo():
             self._start(lambda progress: self.pipeline.run_all(progress, force=True),
-                        "redoing everything")
+                        "redoing everything", True)
 
     def _confirm_redo(self) -> bool:
         box = QtWidgets.QMessageBox(self)
@@ -269,7 +272,7 @@ class Window(QtWidgets.QMainWindow):
 
     def _on_run_group(self, group: str):
         self._start(lambda progress: self.pipeline.run_group(group, progress),
-                    f"running {GROUP_LABELS[group].lower()}")
+                    f"running {GROUP_LABELS[group].lower()}", then_show=group == "sta")
 
     def _on_drop_group(self, group: str):
         self.pipeline.drop_group(group)
@@ -279,7 +282,8 @@ class Window(QtWidgets.QMainWindow):
     def _finished(self):
         self._busy(False)
         self._refresh()
-        if self.pipeline.results is not None:
+        # only what computed an STA opens the results; running the triggers again should not
+        if self._show_when_done and self.pipeline.results is not None:
             self._show_results()
 
     def _failed(self, message: str):
@@ -297,12 +301,11 @@ class Window(QtWidgets.QMainWindow):
             self._show_results()
 
     def _show_trigger_plot(self):
+        """Show the trace that has been read, never read it: that is the step's job."""
         if self.pipeline.trace is None:
-            try:
-                self.pipeline.run(ca.TRACE)
-            except (OSError, ValueError) as error:
-                self._log(f"No trigger channel to show: {error}", "warn")
-                return
+            self._log("Run Triggers and spikes first: the trigger channel has not been read",
+                      "warn")
+            return
         TriggerPlot(self.pipeline.trace, self.config.fs, self.config.threshold,
                     self.pipeline.triggers, self).exec()
 

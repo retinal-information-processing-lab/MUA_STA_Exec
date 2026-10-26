@@ -6,31 +6,10 @@ from typing import Callable
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from .theme import (ACTION_STYLE, DIM, LOG_COLOURS, PANEL_BG, SEGMENT_STYLE,
-                    STATUS_COLOURS)
+from .theme import ACTION_STYLE, DIM, LOG_COLOURS, SEGMENT_STYLE, STATUS_COLOURS
 
 
 # ----------------------------------------------------------------------- factories
-def title_label(text: str, colour: str) -> QtWidgets.QLabel:
-    label = QtWidgets.QLabel(text)
-    label.setFont(QtGui.QFont("Consolas", 12, QtGui.QFont.Weight.Bold))
-    label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-    label.setStyleSheet(f"background: {colour}; color: white; padding: 6px; border-radius: 4px;")
-    return label
-
-
-def card(layout: QtWidgets.QLayout, name: str, colour: str, width: int | None = None):
-    """One part of the window: a framed card with a coloured top edge."""
-    frame = QtWidgets.QFrame()
-    frame.setObjectName(name)
-    frame.setStyleSheet(f"QFrame#{name} {{ background: {PANEL_BG}; border: 1px solid #2E2E2E;"
-                        f" border-top: 3px solid {colour}; border-radius: 6px; }}")
-    frame.setLayout(layout)
-    if width:
-        frame.setFixedWidth(width)
-    return frame
-
-
 def button(text: str, slot, tip: str = "", style: str = "") -> QtWidgets.QPushButton:
     btn = QtWidgets.QPushButton(text)
     btn.clicked.connect(slot)
@@ -138,30 +117,6 @@ class FileRow(QtWidgets.QWidget):
 
     def path(self) -> str:
         return self.edit.text().strip()
-
-
-class ConsoleLog(QtWidgets.QPlainTextEdit):
-    """The shared log: black background, green monospace, one colour per level."""
-
-    appended = QtCore.pyqtSignal(str, str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setReadOnly(True)
-        self.setMaximumBlockCount(2000)
-        self.setFont(QtGui.QFont("Consolas", 9))
-        self.setStyleSheet("background: #0A0A0A; color: #00FF00; border: none;")
-        self.appended.connect(self._append)       # so worker threads can log safely
-
-    def log(self, message: str, level: str = "info"):
-        self.appended.emit(str(message), level)
-
-    def _append(self, message: str, level: str):
-        colour = LOG_COLOURS.get(level, LOG_COLOURS["info"])
-        stamp = QtCore.QTime.currentTime().toString("HH:mm:ss")
-        self.appendHtml(f'<span style="color:{DIM}">{stamp}</span> '
-                        f'<span style="color:{colour}">{message}</span>')
-        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
 
 class StatusDot(QtWidgets.QWidget):

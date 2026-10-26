@@ -4,11 +4,10 @@ import pytest
 
 from mua_sta import cache as ca
 from mua_sta import stimulus as st
-from mua_sta.config import Config
 from mua_sta.pipeline import GROUPS
 
 pytest.importorskip("PyQt6")
-pytest.importorskip("pyqtgraph")
+pytest.importorskip("matplotlib")
 
 from PyQt6 import QtWidgets                                         # noqa: E402
 
@@ -28,8 +27,13 @@ def window(app, setup):                                             # noqa: F811
     config.path = str(root / "config.json")                         # never the real one
     window = Window(config)
     window.pipeline.cache = ca.Cache.for_recording(config.recording_path, root=root / "cache")
-    # run in this thread, refreshing afterwards as the real Worker does when it finishes
-    window._start = lambda work, what: (work(lambda message: None), window._refresh())
+    def run_here(work, what, then_show=False):
+        """Stand in for the Worker: same thread, same bookkeeping on either side of the work."""
+        window._show_when_done = then_show
+        work(lambda message: None)
+        window._finished()
+
+    window._start = run_here
     yield window
     window.close()
 
@@ -334,3 +338,25 @@ def test_the_status_line_carries_the_last_message(window):
     window._log("something happened", "warn")
     assert window.status.text() == "something happened"
     assert "FF" in window.status.styleSheet().upper()       # warnings are not grey
+
+
+def test_the_trigger_button_shows_what_was_read_and_never_reads(window, monkeypatch):
+    """Nothing starts work on its own: the button says to run the step rather than reading
+    19 GB on the interface thread."""
+    import mua_sta.recording as rec_mod
+    monkeypatch.setattr(rec_mod, "read_channel",
+                        lambda *a, **k: pytest.fail("the trigger button read the recording"))
+    window._show_trigger_plot()
+    assert "Run Triggers and spikes first" in window.status.text()
+
+
+def test_only_an_sta_opens_the_results(window):
+    """Running the triggers again should not throw a window in your face."""
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window.results_window = None
+    window._on_run_group("recording")
+    assert window.results_window is None
+    window._on_run_group("sta")
+    assert window.results_window is not None
+    window.results_window.close()

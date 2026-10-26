@@ -15,7 +15,7 @@ from . import cache as ca
 from . import stimulus as st
 from . import triggers as tg
 from .config import Config
-from .theme import DIM, WARN
+from .theme import DIM
 from .widgets import button, combo_box, human_size, spin_box
 
 

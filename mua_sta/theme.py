@@ -4,10 +4,7 @@ from __future__ import annotations
 from PyQt6 import QtGui, QtWidgets
 
 BG, CARD, TEXT, DIM, BTN, ACCENT = "#121212", "#1E1E1E", "#E0E0E0", "#555555", "#2A2A2A", "#2D6A9F"
-PANEL_BG = "#181818"                        # the cards sit on the window background
-RECORDING_COLOUR, STIMULUS_COLOUR, STEPS_COLOUR = "#2D6A9F", "#7A3E9D", "#2E7D5B"
-WARN = "#FFD700"
-LOG_COLOURS = {"info": "#00FF00", "warn": WARN, "error": "#FF4444"}
+LOG_COLOURS = {"info": "#00FF00", "warn": "#FFD700", "error": "#FF4444"}
 
 #: One colour per state of a step: done, has to be redone, not done yet.
 STATUS_COLOURS = {"cached": "#00FF00", "stale": "#FF4444", "missing": DIM, "unknown": DIM}
@@ -25,8 +22,6 @@ ACTION_STYLE = """
     QPushButton:hover { background: #2A6A2A; }
     QPushButton:disabled { background: #3A3A3A; color: #666666; }
 """
-STOP_STYLE = (ACTION_STYLE.replace("#1A4A1A", "#5A1414").replace("#00FF00", "#FF6060")
-              .replace("#2A6A2A", "#7A2020"))
 
 
 def apply_dark_theme(app: QtWidgets.QApplication):
