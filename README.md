@@ -101,9 +101,11 @@ Caches live in `~/.mua_sta/cache`; the gear says how much they take.
 ![the results](ResourcesAndTools/results.png)
 
 They open in their own window when a run finishes, and the **⊞** button on the STA line brings
-them back. Every electrode's receptive field is tiled onto the array; click one to see it
-larger, with its temporal profile and its raster over the repeated halves. The selected
-electrode is marked by a square rather than a caption.
+them back. Every electrode's receptive field is tiled onto the array, each tile carrying its
+MCS number; click one to see it larger, with its temporal profile and its raster over the
+repeated halves. The selected electrode is marked by a square rather than a caption, and the
+top-left electrode is selected to begin with so the detail is never blank — the very corner of
+this array is a reference channel, so that is the first one along with data.
 
 There is nothing to set. The stimulus axes are placed on the electrode grid by the rig's own
 registration, the way its polarity and optics are (see *Orientation*), and the tiles are always

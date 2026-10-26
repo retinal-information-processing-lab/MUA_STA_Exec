@@ -25,6 +25,8 @@ from .widgets import button
 #: Blue negative, white nothing, red positive — the colour map the pipeline uses for STAs.
 CMAP = "RdBu_r"
 TEXT = "#222222"
+LABEL = "#8A8A8A"       # the electrode numbers on the grid: there to be read, not to shout
+LABEL_SIZE = 4.5
 
 
 class ResultsWindow(QtWidgets.QWidget):
@@ -77,11 +79,23 @@ class ResultsWindow(QtWidgets.QWidget):
     # ------------------------------------------------------------------- drawing
     def show_results(self, results):
         self.results = results
-        self.selected = None
+        if self.selected is None or results.index_of(self.selected) is None:
+            self.selected = self._top_left_electrode()
         self.draw()
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _top_left_electrode(self) -> int | None:
+        """The electrode at the top left of the grid, skipping the corner references.
+
+        The very corner, row 15 column 0, is a reference channel on this array, so the first
+        one with data is its neighbour. Highest row first, then leftmost column.
+        """
+        labels = [int(label) for label in self.results.labels if int(label) in self.mapping]
+        if not labels:
+            return None
+        return min(labels, key=lambda label: (-self.mapping[label][0], self.mapping[label][1]))
 
     def draw(self):
         if self.results is None:
@@ -99,6 +113,7 @@ class ResultsWindow(QtWidgets.QWidget):
             spine.set_visible(False)
         self.ax_grid.imshow(np.ma.masked_invalid(self.grid.image), cmap=CMAP, vmin=-1, vmax=1,
                             origin="lower", interpolation="nearest")
+        self._label_tiles()
         self.highlight = None
         if self.selected is not None:
             self.show_electrode(self.selected, redraw=False)
@@ -108,6 +123,23 @@ class ResultsWindow(QtWidgets.QWidget):
                 ax.set_xticks([])
                 ax.set_yticks([])
         self.canvas.draw_idle()
+
+    def _label_tiles(self):
+        """Its MCS number in the top-left corner of every tile, so an electrode can be named
+        without clicking it. Row 0 is at the bottom, so the top of a tile is its higher y."""
+        rows, cols = self.grid.tile
+        # inset from the corner, in cells, so the selection square cannot sit on the digits
+        # whatever the tile size
+        inset = max(1.0, rows * 0.06)
+        for label in self.results.labels:
+            position = self.mapping.get(int(label))
+            if position is None:
+                continue
+            row, col = position
+            self.ax_grid.text(col * (cols + self.grid.padding) + inset,
+                              row * (rows + self.grid.padding) + rows - 0.5 - inset,
+                              str(int(label)), fontsize=LABEL_SIZE, color=LABEL,
+                              ha="left", va="top", zorder=4)
 
     def _on_click(self, event):
         if self.results is None or self.grid is None or event.inaxes is not self.ax_grid:

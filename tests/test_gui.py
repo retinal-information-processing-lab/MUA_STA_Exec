@@ -360,3 +360,41 @@ def test_only_an_sta_opens_the_results(window):
     window._on_run_group("sta")
     assert window.results_window is not None
     window.results_window.close()
+
+
+def test_the_results_open_on_the_top_left_electrode(window):
+    """So the detail panel is never blank on first sight. The very corner of this array is a
+    reference channel, so the default is the first one along that carries data."""
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window._show_results()
+    results = window.results_window
+    assert results.selected is not None
+    row, col = results.mapping[results.selected]
+    for label in results.results.labels:
+        other = results.mapping[int(label)]
+        assert (-row, col) <= (-other[0], other[1])     # none is further up or further left
+    assert results.highlight is not None
+    results.close()
+
+
+def test_a_selection_survives_a_new_run(window):
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window._show_results()
+    results = window.results_window
+    chosen = int(window.pipeline.results.labels[5])
+    results.show_electrode(chosen)
+    results.show_results(window.pipeline.results)
+    assert results.selected == chosen
+    results.close()
+
+
+def test_every_tile_carries_its_electrode_number(window):
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window._show_results()
+    results = window.results_window
+    drawn = {text.get_text() for text in results.ax_grid.texts}
+    assert drawn == {str(int(label)) for label in window.pipeline.results.labels}
+    results.close()
