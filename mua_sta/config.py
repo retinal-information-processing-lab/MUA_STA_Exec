@@ -24,7 +24,10 @@ class Config:
     recording_path: str = ""
     last_dir: str = ""
 
-    # --- the recording
+    # --- the recording. Only the trigger channel is ever shown: this rig always records 256
+    # uint16 channels at 20 kHz through the same amplifier, and the trigger threshold is a
+    # property of the setup (rigs.py), not something anyone tunes at the bench. They stay
+    # fields rather than becoming constants so they are still part of the cache keys.
     n_channels: int = rec.DEFAULT_N_CHANNELS
     dtype: str = rec.DEFAULT_DTYPE
     fs: float = rec.DEFAULT_FS
@@ -42,11 +45,11 @@ class Config:
 
     # --- the stimulus
     checkerboard_source: str = ""
-    n_checks_x: int = 42
-    n_checks_y: int = 42
-    pixels_per_check: int = 16
+    n_checks: int = 42                           # squares per side; the board is square
+    pixels_per_check: int = 16                   # only scales the µm a result is reported in
     swn_bin: str = ""
     swn_vec: str = ""
+    swn_lattice_auto: bool = True                # measure the two below from the frames
     checks_per_side: int = 10
     shifts_per_check: int = 8
 
@@ -82,7 +85,7 @@ class Config:
             if not self.checkerboard_source:
                 raise ValueError("no binary source file chosen for the checkerboard")
             return stimulus.CheckerboardSpec(
-                Path(self.checkerboard_source), self.n_checks_x, self.n_checks_y, self.mea,
+                Path(self.checkerboard_source), self.n_checks, self.n_checks, self.mea,
                 self.pixels_per_check)
         if self.kind == stimulus.SWN:
             if not (self.swn_bin and self.swn_vec):

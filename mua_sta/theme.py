@@ -9,9 +9,16 @@ RECORDING_COLOUR, STIMULUS_COLOUR, STEPS_COLOUR = "#2D6A9F", "#7A3E9D", "#2E7D5B
 WARN = "#FFD700"
 LOG_COLOURS = {"info": "#00FF00", "warn": WARN, "error": "#FF4444"}
 
-#: One colour per cache state, for the dot beside each step.
-STATUS_COLOURS = {"missing": DIM, "stale": WARN, "cached": "#00FF00", "unknown": "#333333"}
+#: One colour per state of a step: done, has to be redone, not done yet.
+STATUS_COLOURS = {"cached": "#00FF00", "stale": "#FF4444", "missing": DIM, "unknown": DIM}
 
+SEGMENT_STYLE = """
+    QPushButton { background: #1E1E1E; color: #999999; border: 1px solid #333;
+                  border-radius: 0; padding: 6px 10px; }
+    QPushButton:hover { background: #2A2A2A; }
+    QPushButton:checked { background: #7A3E9D; color: #FFFFFF; border-color: #7A3E9D;
+                          font-weight: bold; }
+"""
 ACTION_STYLE = """
     QPushButton { background: #1A4A1A; color: #00FF00; border: none; border-radius: 4px;
                   font: bold 11pt 'Consolas'; padding: 10px; }

@@ -6,7 +6,8 @@ from typing import Callable
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from .theme import ACTION_STYLE, DIM, LOG_COLOURS, PANEL_BG, STATUS_COLOURS
+from .theme import (ACTION_STYLE, DIM, LOG_COLOURS, PANEL_BG, SEGMENT_STYLE,
+                    STATUS_COLOURS)
 
 
 # ----------------------------------------------------------------------- factories
@@ -71,6 +72,34 @@ def combo_box(items: list[tuple[str, object]], current, slot=None) -> QtWidgets.
     if slot is not None:
         box.currentIndexChanged.connect(lambda _: slot(box.currentData()))
     return box
+
+
+def segmented(options: list[tuple[str, object]], current, slot) -> tuple[QtWidgets.QWidget, dict]:
+    """A two-or-more position switch: one button per option, only one pressed at a time.
+
+    Returns the widget and the buttons by value, so a caller can set the position itself.
+    """
+    bar = QtWidgets.QWidget()
+    row = QtWidgets.QHBoxLayout(bar)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(0)
+    group = QtWidgets.QButtonGroup(bar)
+    group.setExclusive(True)
+    buttons = {}
+    for index, (label, value) in enumerate(options):
+        btn = QtWidgets.QPushButton(label)
+        btn.setCheckable(True)
+        btn.setChecked(value == current)
+        btn.setMinimumHeight(30)
+        edge = ("border-top-left-radius: 4px; border-bottom-left-radius: 4px;" if index == 0
+                else "border-top-right-radius: 4px; border-bottom-right-radius: 4px;"
+                if index == len(options) - 1 else "")
+        btn.setStyleSheet(SEGMENT_STYLE + f"QPushButton {{ {edge} }}")
+        btn.clicked.connect(lambda _=False, v=value: slot(v))
+        group.addButton(btn)
+        row.addWidget(btn, stretch=1)
+        buttons[value] = btn
+    return bar, buttons
 
 
 # ------------------------------------------------------------------------- widgets
@@ -157,40 +186,55 @@ class StatusDot(QtWidgets.QWidget):
 
 
 class StepRow(QtWidgets.QWidget):
-    """One step of the pipeline: status dot, name, note, run-just-this and drop-cache buttons."""
+    """One line of the run: a status dot, its name, play, erase, and one look-at-it button."""
 
     run_requested = QtCore.pyqtSignal(str)
     drop_requested = QtCore.pyqtSignal(str)
+    extra_requested = QtCore.pyqtSignal(str)
 
-    def __init__(self, step: str, label: str, parent=None):
+    def __init__(self, step: str, label: str, extra: str = "", extra_tip: str = "", parent=None):
         super().__init__(parent)
         self.step = step
         row = QtWidgets.QHBoxLayout(self)
-        row.setContentsMargins(0, 2, 0, 2)
-        row.setSpacing(6)
+        row.setContentsMargins(0, 1, 0, 1)
+        row.setSpacing(4)
         self.dot = StatusDot()
         self.name = QtWidgets.QLabel(label)
-        self.name.setMinimumWidth(130)
-        self.note = QtWidgets.QLabel("—")
-        self.note.setStyleSheet(f"color: {DIM};")
-        self.note.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight
-                               | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        self.run = button("▶", lambda: self.run_requested.emit(self.step), "run this step now")
-        self.drop = button("✕", lambda: self.drop_requested.emit(self.step),
-                           "forget this step's cached result")
-        for btn in (self.run, self.drop):
-            btn.setFixedWidth(28)
-            btn.setStyleSheet("padding: 2px 0;")
+        self.run = button("\u25b6", lambda: self.run_requested.emit(self.step),
+                          "run this step (again, if it is already done)")
+        self.drop = button("\u2715", lambda: self.drop_requested.emit(self.step),
+                           "forget what this step computed")
+        self.extra = button(extra, lambda: self.extra_requested.emit(self.step), extra_tip)
+        self.extra.setVisible(bool(extra))
+        for btn in (self.run, self.drop, self.extra):
+            btn.setFixedWidth(26)
+            btn.setStyleSheet("padding: 3px 0;")
         row.addWidget(self.dot)
-        row.addWidget(self.name)
-        row.addWidget(self.note, stretch=1)
-        row.addWidget(self.run)
-        row.addWidget(self.drop)
+        row.addWidget(self.name, stretch=1)
+        for btn in (self.run, self.drop, self.extra):
+            row.addWidget(btn)
 
-    def set_state(self, status: str | None, note: str):
-        self.dot.set_status(status or "unknown")
-        self.note.setText(note)
+    def set_state(self, status: str, tip: str = ""):
+        self.dot.set_status(status)
+        self.dot.setToolTip(tip)
+        self.name.setToolTip(tip)
         self.drop.setEnabled(status in ("cached", "stale"))
+
+
+class StatusLine(QtWidgets.QLabel):
+    """The one line of feedback the window has room for: the last thing that happened."""
+
+    def __init__(self, parent=None):
+        super().__init__("", parent)
+        self.setWordWrap(True)
+        self.setMinimumHeight(32)
+        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.say("")
+
+    def say(self, message: str, level: str = "info"):
+        colour = DIM if level == "info" else LOG_COLOURS.get(level, DIM)
+        self.setStyleSheet(f"color: {colour}; font-size: 8pt;")
+        self.setText(message)
 
 
 def human_size(n_bytes: int) -> str:

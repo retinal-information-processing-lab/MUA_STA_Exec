@@ -147,7 +147,7 @@ def test_switching_stimulus_keeps_the_other_one_built(setup, tmp_path):
     source.write_bytes(bytes(np.random.default_rng(0).integers(0, 256, 4096, dtype=np.uint8)))
     config.kind = st.CHECKERBOARD
     config.checkerboard_source = str(source)
-    config.n_checks_x = config.n_checks_y = 8
+    config.n_checks = 8
     pipeline.run_all()
     assert pipeline.status(ca.STIMULUS) is ca.Status.CACHED
     assert pipeline.results.sta_3d.shape[2:] == (8, 8)
@@ -211,3 +211,75 @@ def test_whitening_that_buries_the_fields_is_reported(setup):
     whitening = [m for level, m in messages if m.startswith("Whitening")]
     assert whitening, "the whitening step says nothing about what it did"
     assert any("quality" in m for m in whitening)
+
+
+# ----------------------------------------------------------------- the three lines
+def test_group_status_aggregates_its_steps(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    assert pipeline.group_status("recording") is ca.Status.MISSING      # trace not read yet
+    pipeline.run(ca.TRACE)
+    assert pipeline.group_status("recording") is ca.Status.MISSING      # triggers still missing
+    pipeline.run(ca.TRIGGERS)
+    assert pipeline.group_status("recording") is ca.Status.CACHED
+    config.trigger_threshold = 9000
+    assert pipeline.group_status("recording") is ca.Status.STALE        # one stale is enough
+
+
+def test_the_covariance_belongs_to_the_stimulus_line_only_when_it_runs(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    config.whiten = False
+    assert pipeline.group_steps("stimulus") == (ca.STIMULUS,)
+    config.whiten = True
+    assert pipeline.group_steps("stimulus") == (ca.STIMULUS, ca.COV)
+    config.kind = st.CHECKERBOARD
+    assert pipeline.group_steps("stimulus") == (ca.STIMULUS,)
+
+
+def test_run_group_forces_only_when_the_line_is_already_green(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run(ca.TRACE)
+    stamp = pipeline.cache.path(ca.TRACE, pipeline.step_key(ca.TRACE)).stat().st_mtime_ns
+
+    pipeline.run_group("recording")                 # grey: only does what is missing
+    assert pipeline.cache.path(ca.TRACE, pipeline.step_key(ca.TRACE)).stat().st_mtime_ns == stamp
+    assert pipeline.group_status("recording") is ca.Status.CACHED
+
+    pipeline.run_group("recording")                 # green: does it again
+    assert pipeline.cache.path(ca.TRACE, pipeline.step_key(ca.TRACE)).stat().st_mtime_ns != stamp
+
+
+def test_drop_group_forgets_every_step_of_the_line(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run_all()
+    pipeline.drop_group("recording")
+    assert pipeline.group_status("recording") is ca.Status.MISSING
+    for step in (ca.TRACE, ca.TRIGGERS, ca.SPIKES):
+        assert pipeline.status(step) is ca.Status.MISSING
+    assert pipeline.group_status("stimulus") is ca.Status.CACHED
+
+
+def test_anything_done_is_what_makes_run_ask(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    assert not pipeline.anything_done()
+    seed_spikes(pipeline)
+    assert pipeline.anything_done()                 # the spikes alone already count
+
+
+def test_run_all_can_force_every_step(setup):
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run_all()
+    stamps = {step: pipeline.cache.path(step, pipeline.step_key(step)).stat().st_mtime_ns
+              for step in pipeline.steps()}
+    pipeline.run_all(force=True)
+    for step, stamp in stamps.items():
+        assert pipeline.cache.path(step, pipeline.step_key(step)).stat().st_mtime_ns != stamp

@@ -35,6 +35,20 @@ STEP_LABELS = {
     ca.ANALYSIS: "STA and rasters",
 }
 
+#: The three lines the window shows, each standing for the steps underneath it. Collapsing
+#: them is only presentation: keeping the steps separate is what lets a changed setup re-detect
+#: the triggers without reading the recording again.
+GROUPS = {
+    "recording": (ca.TRACE, ca.TRIGGERS, ca.SPIKES),
+    "stimulus": (ca.STIMULUS, ca.COV),
+    "sta": (ca.ANALYSIS,),
+}
+GROUP_LABELS = {
+    "recording": "Triggers and spikes",
+    "stimulus": "Stimulus",
+    "sta": "STA",
+}
+
 #: What each step needs before it can run.
 DEPENDENCIES = {
     ca.TRACE: (),
@@ -180,6 +194,47 @@ class Pipeline:
             return None
         return self.cache.status(step, step_key)
 
+    def group_steps(self, group: str) -> tuple[str, ...]:
+        """The steps of one line, leaving out any that do not apply (the covariance when the
+        stimulus is a checkerboard, or when whitening is off)."""
+        applicable = set(self.steps())
+        return tuple(step for step in GROUPS[group] if step in applicable)
+
+    def group_status(self, group: str) -> ca.Status:
+        """One dot for the whole line: red if anything has to be redone, green if all of it is
+        usable, grey otherwise (never done, half done, or not knowable yet)."""
+        statuses = [self.status(step) for step in self.group_steps(group)]
+        if any(status is ca.Status.STALE for status in statuses):
+            return ca.Status.STALE
+        if statuses and all(status is ca.Status.CACHED for status in statuses):
+            return ca.Status.CACHED
+        return ca.Status.MISSING
+
+    def run_group(self, group: str, progress: Progress | None = None, force: bool = False):
+        """Run one line. Pressing play on a line that is already green means "do it again", so
+        a green group is forced; a red or grey one only does what is missing."""
+        steps = self.group_steps(group)
+        force = force or self.group_status(group) is ca.Status.CACHED
+        for step in steps:
+            self.run(step, progress, force=force)
+
+    def drop_group(self, group: str):
+        """Forget every cached result of one line."""
+        for step in GROUPS[group]:
+            step_key = self.step_key(step)
+            if step_key is not None:
+                self.cache.drop(step, step_key)
+            self._loaded.pop(step, None)
+
+    def anything_done(self) -> bool:
+        """True when any step has already been computed, whatever its settings were.
+
+        Asked per step rather than per line: a line reads grey while only part of it is done,
+        but that part is still work the Run button would be throwing away.
+        """
+        return any(self.status(step) in (ca.Status.CACHED, ca.Status.STALE)
+                   for step in self.steps())
+
     def stimulus_frame_count(self) -> int | None:
         """How many novel frames the stimulus has to supply, or None if not known yet."""
         n_sequences = self.n_sequences()
@@ -219,9 +274,10 @@ class Pipeline:
             self._compute(step, step_key, progress)
         self._loaded[step] = step_key
 
-    def run_all(self, progress: Progress | None = None):
+    def run_all(self, progress: Progress | None = None, force: bool = False):
+        """Run everything. ``force`` recomputes each step even when it is already cached."""
         for step in self.steps():
-            self.run(step, progress)
+            self.run(step, progress, force=force)
 
     def _adopt(self, step: str, cached: dict):
         """Take a cached entry as this step's result."""

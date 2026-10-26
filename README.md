@@ -11,8 +11,9 @@ It handles both stimuli the standard analysis pipeline supports:
 
 ![the window](ResourcesAndTools/window.png)
 
-*A 30-minute shifting-white-noise recording on MEA3: one multi-unit receptive field per
-electrode, their positions tracking the array. Whitening is off in this shot — see below.*
+Load a recording, press RUN. Everything that does not change between experiments — 256 uint16
+channels at 20 kHz, the visual trigger channel, each rig's trigger threshold, the
+spike-detection band — lives in the code or in the per-rig table, not on screen.
 
 ---
 
@@ -51,55 +52,58 @@ The GUI remembers its settings in `~/.mua_sta/config.json`, and its log goes to
 
 ## Using it
 
-### The menu bar
+**Stimulus**, at the top: a two-position switch. *Checkerboard* asks for the binary source and
+how many squares per side; *Shifting white noise* asks for the frame library and the playlist
+and nothing else — the lattice is measured from the frames themselves and reported on the
+status line. The stimulus frequency is read off the triggers either way.
 
-- **Stimulus** — *Checkerboard* or *Shifting white noise*. The middle card follows.
-- **Setup** — *MEA1 / MEA2 / MEA3*. This sets the trigger threshold, the DMD geometry and
-  pixel size, and the display polarity and optics. A rig whose display settings have not been
-  verified says so.
-- **Cache** — open the cache folder, or forget this recording's steps, or all of them.
+**Setup**, below it: MEA 1, 2 or 3. This sets the trigger threshold, the DMD geometry and pixel
+size, the display polarity and optics, and how the array sits in the stimulus. Next to it is
+the trigger channel, 126 — the visual trigger, the same one the standard pipeline reconstructs
+from.
 
-### The three cards
+**Recording**: the `.raw` file, with its size and duration underneath.
 
-**RECORDING** — the `.raw` file, the acquisition settings, and the trigger threshold. Once the
-trigger-channel step has run, the trace is plotted underneath with the threshold as a dashed
-line: **drag the line** to set the threshold over the real pulses instead of guessing a number.
+**The three lines** are the run, split where the work is:
 
-**STIMULUS** — the stimulus files and geometry, the sequence layout, and a frame preview. The
-preview shows a frame *as the retina saw it*, either on the analysis grid (what actually feeds
-the STA) or at **full resolution**, which is the frame to compare against the lab's
-StimulusDisplayer when checking orientation.
-
-![the setup tab](ResourcesAndTools/window_setup.png)
-
-**STEPS** — one row per step of the pipeline, with a dot saying whether it is usable:
-
-| dot | meaning |
+| line | what it does |
 |---|---|
-| green | done, with the settings currently in the window |
-| yellow | done, but with *different* settings — it will be redone |
-| grey | not done yet |
+| Triggers and spikes | everything about the file: reads the trigger channel, finds the onsets, detects the MUA |
+| Stimulus | rebuilds what was shown, and its covariance if whitening is on |
+| STA | bins the spikes against it and computes the spike-triggered averages |
 
-`RUN` does only what is not green. `▶` redoes one step on its own; `✕` forgets its result.
+Each has a dot — **green** done, **red** has to be redone, **grey** not done yet — a **▶** that
+runs just that line, an **✕** that forgets it, and one button to look at what it produced: the
+trigger trace, a stimulus frame, or the results.
 
-### Why the steps are split where they are
+**RUN** does the lot. If any of it has already been done it asks first whether to redo
+everything from the start; to redo only one line, use that line's ▶.
+
+The **gear** holds what is rarely worth touching: the MUA detection band, threshold, peak sign
+and job count; the sequence length and STA depth; whitening and its regularisation; the
+checkerboard's check width; and the cache (how big it is, where it is, and how to empty it).
+
+The **status line** at the bottom shows the last thing that happened, in red if it was a
+warning. The full timestamped log goes to `~/.mua_sta/mua_sta.log`.
+
+### Why the three lines are split that way
 
 Reading the trigger channel is a pass over a ~19 GB file and detecting MUA spikes is a pass
-over all 256 channels of it. Both are cached on **only** what they actually depend on:
+over all 256 channels of it, so underneath each line the steps are cached separately, on only
+what they actually depend on. Changing the setup changes that rig's trigger threshold, so the
+triggers go stale while the trace stays valid — the *Triggers and spikes* line turns red and ▶
+re-detects the onsets in a fraction of a second instead of reading the file again. Nothing
+about the stimulus or the analysis can ever force the spike detection to run a second time.
+Caches live in `~/.mua_sta/cache`; the gear says how much they take.
 
-| step | depends on | so changing this does *not* redo it |
-|---|---|---|
-| Trigger channel | the file, channel count, sample format, trigger channel | **the threshold** |
-| Triggers | the above + threshold, allowed jitter | anything about the stimulus |
-| MUA spikes | the file + detection band, threshold, peak sign, reference | **every stimulus and analysis parameter** |
-| Stimulus | the stimulus files + checks, shifts, setup | the recording, the spikes |
-| Covariance | the stimulus + regularisation | — |
-| STA and rasters | all of the above + sequence layout, STA depth | — |
+### The results
 
-So mistyping the check count costs the stimulus rebuild and the STA, not the spike detection.
-Caches live in `~/.mua_sta/cache`; the STEPS card shows how much they take.
+![the results](ResourcesAndTools/results.png)
 
----
+They open in their own window when a run finishes, and the **⊞** button on the STA line brings
+them back. Every electrode's spatial STA is tiled onto the array; click one for its receptive
+field, its temporal profile and its raster over the repeated halves. The controls along the top
+are display only and never invalidate a cached step — see *Orientation*.
 
 ## The two stimuli
 
@@ -109,9 +113,10 @@ Checks come from the binary source, bit 0 onwards, least significant bit first w
 row-major inside a frame. Only the novel half of each sequence is drawn from it, so the tool
 reads `sequences × frames_per_sequence / 2` frames.
 
-Type in the number of checks per side and how many DMD pixels wide a check was — both come
-from the stimulus, usually from its file name (`..._16px_42sq_...` is 42 checks of 16 px). The
-check width only sets the micrometres the result is reported in: 16 px on MEA3 is 40 µm.
+Type in the number of squares per side; it comes from the stimulus, usually from the recording's
+file name (`..._16px_42sq_...` is 42 checks of 16 px). The check width, the `16px` in that name,
+is in the gear: it only sets the micrometres the result is reported in — 16 px on MEA3 is 40 µm
+— and changes nothing that is computed.
 
 ### Shifting white noise
 
@@ -125,8 +130,8 @@ step being a fraction of a check. The analysis grid therefore has one cell per s
 exact rather than an approximation — because the grid only ever moves by whole shift steps,
 every check edge lands on a cell boundary, so a cell always sits inside a single check.
 
-**Type the checks per side in** (it comes from the stimulus design); **Detect** measures both
-numbers from the frames and fills them in. Getting the shift count right matters: for the MEA3
+**Nothing has to be typed in**: choosing a frame library measures both numbers from its frames
+and says what it found on the status line. Getting the shift count right matters: for the MEA3
 library `20250512_4_SWN_48pixCh_6pixShift_30Hz_MEA3.bin`, the frames are drawn at 672 px for a
 480 px design, so a check is 67.2 px and a shift step 8.4 px — 10 checks of 8 shifts, an 80×80
 grid at 21 µm per cell. `frame[::6, ::6]`, which the standard pipeline's `swn_shift_x = 6`
@@ -139,7 +144,7 @@ black and white.
 
 SWN frames are spatially correlated — with `s` shifts per check, two cells `d` steps apart
 share a check with probability `1 − d/s` — so the raw STA is the receptive field blurred by the
-stimulus's own covariance. **whiten the spatial STA** divides that back out (`C⁻¹·STA`, the
+stimulus's own covariance. **whiten the spatial STA**, in the gear, divides that back out (`C⁻¹·STA`, the
 linear-regression estimate of the filter). The covariance is a property of the *stimulus*,
 identical for every electrode, so it is factorised once and reused for all 252 of them: the
 same answer as solving per electrode, and hundreds of times faster. **Regularisation** is a
@@ -156,9 +161,9 @@ black-and-white stimulus and leaves the whitening doing nothing at all.
 > variance at high spatial frequencies, so its inverse amplifies them — and a multi-unit STA,
 > pooled over everything the electrode picked up, is noisy there. It is worth having for
 > comparing against the standard pipeline's sorted single-cell STAs, which are far cleaner.
-> The tool measures the before and after and says so in the log when whitening has cost you,
-> and the unwhitened STA is always kept alongside, so **untick it** if the grid looks like
-> noise.
+> The tool measures the before and after and says so on the status line and in the log when
+> whitening has cost you, and the unwhitened STA is always kept alongside, so **untick it in the
+> gear** if the grid looks like noise.
 
 Checkerboard frames are already uncorrelated, so there is nothing to whiten and the step does
 not appear.
@@ -172,14 +177,14 @@ There are two separate questions, and only the first was ever handled.
 **How the stimulus looked on the retina.** One table, `mua_sta/rigs.py`, holds each rig's
 display polarity and optical transform, and one function applies them — to the checkerboard and
 to SWN alike, so the two cannot disagree. It is the same table and the same order as the lab's
-StimulusDisplayer, so a frame in the preview is the frame that was projected. To check it end
-to end, open the same `.bin`/`.vec` in the StimulusDisplayer and in the **full resolution**
-frame preview at the same frame index and confirm they match.
+StimulusDisplayer, so a frame in the preview is the frame that was projected. To check it end to
+end, open the same `.bin`/`.vec` in the StimulusDisplayer and in the **▣** button's preview — with
+**full resolution** ticked — at the same frame index, and confirm they match.
 
 **How the array sits in that frame.** No stimulus file can tell you this one: it is a property
 of the setup. It is measured from the data instead, by the fact that an electrode's position on
 the array has to predict where its receptive field is — which holds under exactly one of the
-eight ways two image frames can be related. **Check orientation** on the Results tab tries all
+eight ways two image frames can be related. **Check orientation**, in the results window, tries all
 eight and reports them. On MEA3 the answer is `transpose_flip_xy` at r = +0.98, with the next
 best at +0.12: a transpose and two flips away from the identity the previous version of this
 tool assumed. That default is in `rigs.py`; MEA1 and MEA2 are still `identity` and
