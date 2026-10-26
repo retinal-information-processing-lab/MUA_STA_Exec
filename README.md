@@ -220,9 +220,29 @@ synthetic shifting stimulus, what the cache considers stale, and the window itse
 
 ---
 
-## Next
+## Next: reading `.mcd` directly
 
 Recordings arrive as `.mcd` and are converted to `.raw` with MC_DataTool by hand, which costs
-time and doubles the disk use. Reading the `.mcd` directly is the next piece of work; the
-format is a simple chunked container whose electrode payloads are byte-identical to the `.raw`,
-so this tool will read it and the `.raw` step will go away.
+time and doubles the disk use (19 GB each). That step is about to go away: the format is a
+plain chunked container, and its electrode payloads are **byte-identical** to the `.raw`
+MC_DataTool produces — checked on chunks 0, 1, 2, 9000 and 18487 of a 19 GB recording, with the
+chunk count matching the `.raw`'s sample count exactly.
+
+What is in the file, for whoever writes `mua_sta/mcd.py`:
+
+| | |
+|---|---|
+| chunk | 8-byte ASCII tag, then an 8-byte little-endian `int64` size |
+| root | `MCSSTRM ` with size `-1`, i.e. to the end of the file |
+| header | `LISThdr` holding `MCSHDR` (original path, device `USB-MEA256`, serial) then one `STRMHDR`/`STRMFMT` pair per stream |
+| streams | `digital`/`digi0001` and `analog`/`elec0001` |
+| `STRMHDR` (analog) | 1104-byte records per channel, labels `01`…`256` **in file order** — so channel index *i* is MCS label *i*+1 |
+| `STRMFMT` | 16 bits per sample, ADC zero 32768, scale as a `float64` (`1.0417e-07` V, i.e. 0.10417 µV per level — the file states the amplifier gain of 1200, so nothing has to be hard-coded), 2000 samples per chunk |
+| data | one chunk per stream per 0.1 s block, each payload a 16-byte sub-header (two timestamps, the same in both streams of a block) then the samples |
+| samples | channel-interleaved `uint16`, 2000 samples × 256 channels per analog chunk |
+
+Only `mua_sta/recording.py` has to change: everything else goes through it. The `.raw` branch
+goes away with it, along with the channel-count, sample-format and sampling-rate boxes, since
+the header states all three. Other recordings may be different variants (another stream, a
+different device or chunk size), so the reader parses the header rather than assuming offsets,
+and fails loudly with the stream table printed.
