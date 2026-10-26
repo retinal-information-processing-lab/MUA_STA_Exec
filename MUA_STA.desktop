@@ -1,9 +1,10 @@
 [Desktop Entry]
+Version=1.0
 Type=Application
 Name=MUA STA
 Comment=Multi-unit spike-triggered averages from a MEA recording
-Exec=bash -c "$(dirname %k)/MUA_STA.sh"
-Path=
+Exec=bash "/home/guiglaz/Documents/MU_STA/MUA_STA.sh"
+Path=/home/guiglaz/Documents/MU_STA
 Icon=utilities-system-monitor
 Terminal=false
-Categories=Science;Education;
+Categories=Science;Engineering;

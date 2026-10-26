@@ -28,8 +28,14 @@ Or just run the launcher for your platform — it creates the environment on fir
 
 | | |
 |---|---|
-| Linux | `./MUA_STA.sh` (or the `MUA_STA.desktop` shortcut) |
+| Linux | `./MUA_STA.sh`, or `./MUA_STA.sh --install-shortcut` once to put it in the application menu |
 | Windows | double-click `MUA_STA.bat` |
+
+Both launchers call the environment's own interpreter by its full path rather than relying on
+`conda activate` plus whatever `python` is first on PATH — on a machine whose profile puts
+another environment early on PATH, that silently runs the wrong Python and the only sign is an
+`ImportError` in the log. `MUA_STA.sh` also checks the environment imports before detaching, so
+a broken one is reported in the terminal instead of in a log nobody reads.
 
 The GUI remembers its settings in `~/.mua_sta/config.json`, and its log goes to
 `~/.mua_sta/mua_sta.log`.

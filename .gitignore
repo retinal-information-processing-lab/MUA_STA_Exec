@@ -136,7 +136,8 @@ binarysource1000Mbits
 *.bin
 *.vec
 
-# Lab script kept at the root for reference only; the tool uses mua_sta/binfile.py.
+# The lab's binfile.py, if it is ever dropped here again for reference: the tool has its
+# own modernised copy in mua_sta/binfile.py, and the original is in this repo's history.
 /binfile.py
 
 # Claude Code local settings (per-machine permission allowlist)
