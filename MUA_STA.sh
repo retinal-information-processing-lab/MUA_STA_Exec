@@ -10,7 +10,12 @@
 # output goes to ~/.mua_sta/mua_sta.log.
 #
 #   ./MUA_STA.sh                      launch
-#   ./MUA_STA.sh --install-shortcut   add it to this machine's application menu
+#   ./MUA_STA.sh --install-shortcut   add it to this machine's application menu and desktop
+#
+# Recent GNOME will not run a .sh from the file manager at all (no "Run as a Program", and
+# double-clicking opens it in an editor), so --install-shortcut is how you get something to
+# click. The desktop icon needs "Allow Launching" from its right-click menu once, which only
+# the desktop itself is allowed to set.
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 cd "$here"
@@ -62,13 +67,26 @@ rm -f "/tmp/mua_sta_check.$$"
 
 # --- the application-menu shortcut ----------------------------------------------------
 if [ "${1:-}" = "--install-shortcut" ]; then
-    target="$HOME/.local/share/applications/mua_sta.desktop"
-    mkdir -p "$(dirname "$target")"
-    sed -e "s|^Exec=.*|Exec=bash \"$here/MUA_STA.sh\"|" \
-        -e "s|^Path=.*|Path=$here|" "$here/MUA_STA.desktop" > "$target"
-    chmod +x "$target"
-    update-desktop-database "$(dirname "$target")" 2>/dev/null
-    echo "Shortcut installed: $target"
+    menu_dir="$HOME/.local/share/applications"
+    mkdir -p "$menu_dir"
+    entry=$(sed -e "s|^Exec=.*|Exec=bash \"$here/MUA_STA.sh\"|" \
+                -e "s|^Path=.*|Path=$here|" "$here/MUA_STA.desktop")
+    printf '%s\n' "$entry" > "$menu_dir/mua_sta.desktop"
+    chmod +x "$menu_dir/mua_sta.desktop"
+    update-desktop-database "$menu_dir" 2>/dev/null
+    echo "Application menu: $menu_dir/mua_sta.desktop"
+    echo "  press the Super key and type \"MUA STA\"."
+
+    desktop_dir=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+    if [ -d "$desktop_dir" ]; then
+        printf '%s\n' "$entry" > "$desktop_dir/MUA_STA.desktop"
+        chmod +x "$desktop_dir/MUA_STA.desktop"
+        echo "Desktop icon:     $desktop_dir/MUA_STA.desktop"
+        if ! gio set "$desktop_dir/MUA_STA.desktop" metadata::trusted true 2>/dev/null; then
+            echo "  right-click it once and choose \"Allow Launching\" (only the desktop"
+            echo "  itself may set that, so this script cannot do it for you)."
+        fi
+    fi
     exit 0
 fi
 

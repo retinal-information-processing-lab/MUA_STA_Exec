@@ -28,8 +28,15 @@ Or just run the launcher for your platform — it creates the environment on fir
 
 | | |
 |---|---|
-| Linux | `./MUA_STA.sh`, or `./MUA_STA.sh --install-shortcut` once to put it in the application menu |
+| Linux | `./MUA_STA.sh` from a terminal, or `./MUA_STA.sh --install-shortcut` once to get something to click |
 | Windows | double-click `MUA_STA.bat` |
+
+**On Linux, run `--install-shortcut` once.** Recent GNOME will not run a `.sh` from the file
+manager at all: double-clicking one opens it in a text editor, and "Run as a Program" is gone
+from the right-click menu. The option installs a proper launcher in two places — the
+application menu (press Super and type "MUA STA") and the desktop. The desktop icon needs
+**Allow Launching** from its own right-click menu once; only the desktop may set that, so no
+script can do it for you. The application-menu entry needs nothing.
 
 Both launchers call the environment's own interpreter by its full path rather than relying on
 `conda activate` plus whatever `python` is first on PATH — on a machine whose profile puts
