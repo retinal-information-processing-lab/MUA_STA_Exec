@@ -1,13 +1,17 @@
-name: mea_analysis
+# Dedicated environment for MUA_STA (modern stack: Python 3.14, numpy 2, Qt 6).
+#   conda env create -f environment.yml
+#   conda activate mua_sta
+#   python -m mua_sta
+# The launchers (MUA_STA.sh / MUA_STA.bat / MUA_STA.desktop) create it on first use.
+name: mua_sta
 channels:
   - conda-forge
-  - defaults
+  - nodefaults
 dependencies:
-  - python=3.10
-  - numpy
-  - matplotlib
-  - tqdm
-  - pip
-  - pip:
-    - "spikeinterface[full]"
-    - PyQt5
+  - python=3.14
+  - numpy>=2
+  - scipy>=1.14
+  - spikeinterface>=0.105      # MUA peak detection, filtering, common reference
+  - pyqt6>=6.7
+  - pyqtgraph>=0.14
+  - pytest

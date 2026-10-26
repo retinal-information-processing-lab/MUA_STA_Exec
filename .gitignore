@@ -125,3 +125,19 @@ dmypy.json
 
 binarysource1000Mbits
 *.lnk
+
+# ---------------------------------------------------------------------------
+# MUA_STA: lab data and reference material (never committed)
+# ---------------------------------------------------------------------------
+# Recordings, extracted raw files and stimulus bins: tens of GB each.
+/ressources/
+*.raw
+*.mcd
+*.bin
+*.vec
+
+# Lab script kept at the root for reference only; the tool uses mua_sta/binfile.py.
+/binfile.py
+
+# Claude Code local settings (per-machine permission allowlist)
+.claude/

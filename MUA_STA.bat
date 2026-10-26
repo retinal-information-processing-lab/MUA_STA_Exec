@@ -1,22 +1,18 @@
 @echo off
-TITLE Analyse MUA STA
-echo ---------------------------------------------------------
-echo ACTIVATION DE L'ENVIRONNEMENT MUA_STA
-echo ---------------------------------------------------------
+TITLE MUA_STA
+cd /d "%~dp0"
 
-:: Charge Conda (Remplacez par votre chemin si Conda n'est pas dans le PATH)
-call conda activate MUA_STA
-
-:: Vérifie si l'activation a fonctionné
+call conda activate mua_sta
 if %errorlevel% neq 0 (
-    echo Erreur : L'environnement MUA_STA n'a pas pu etre active.
-    pause
-    exit /b
+    echo Environment 'mua_sta' not found: creating it from environment.yml ^(a few minutes^)...
+    call conda env create -f environment.yml
+    if %errorlevel% neq 0 (
+        echo Environment creation failed.
+        pause
+        exit /b
+    )
+    call conda activate mua_sta
 )
 
-echo LANCEMENT DU CODE PYTHON...
-python "STA_MU_Exec.py"
-
-echo ---------------------------------------------------------
-echo ANALYSE THERMINEE.
-pause
+if not exist "%USERPROFILE%\.mua_sta" mkdir "%USERPROFILE%\.mua_sta"
+start "" pythonw -m mua_sta

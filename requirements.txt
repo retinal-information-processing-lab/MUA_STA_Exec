@@ -1,0 +1,9 @@
+# pip alternative to environment.yml (Python 3.12+):
+#   python -m venv .venv && source .venv/bin/activate   (Windows: .venv\Scripts\activate)
+#   pip install -r requirements.txt
+numpy>=2
+scipy>=1.14
+spikeinterface>=0.105
+PyQt6>=6.7
+pyqtgraph>=0.14
+pytest

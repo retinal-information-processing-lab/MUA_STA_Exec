@@ -1,25 +1,24 @@
 #!/bin/bash
+# Launch the MUA_STA GUI in its conda environment (creates the env on first use).
+# The GUI is started detached, so the terminal that ran this script can close immediately.
+# Output of the GUI goes to ~/.mua_sta/mua_sta.log.
+parent_path=$(cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P)
+cd "$parent_path"
 
-# Nom de l'environnement et du script
-ENV_NAME="MUA_STA"
-SCRIPT_NAME="STA_MU_Exec.py"
-
-echo "--- Démarrage de l'analyse MEA ---"
-
-# Vérifie si conda est disponible, sinon essaie de le localiser
-if ! command -v conda &> /dev/null
-then
-    echo "Conda n'est pas dans le PATH. Tentative de chargement via le profil..."
-    # On tente de charger les chemins classiques de conda
-    [ -f ~/anaconda3/etc/profile.d/conda.sh ] && source ~/anaconda3/etc/profile.d/conda.sh
-    [ -f ~/miniconda3/etc/profile.d/conda.sh ] && source ~/miniconda3/etc/profile.d/conda.sh
+if [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+    source "/opt/conda/etc/profile.d/conda.sh"
 fi
 
-# Utilisation de 'conda run' qui est beaucoup plus stable pour les scripts
-echo "Activation de l'environnement $ENV_NAME et lancement de $SCRIPT_NAME..."
-conda run -n $ENV_NAME --no-capture-output python $SCRIPT_NAME
+if ! conda env list | grep -qE "^mua_sta[[:space:]]"; then
+    echo "Environment 'mua_sta' not found: creating it from environment.yml (a few minutes)..."
+    conda env create -f environment.yml || { echo "Environment creation failed."; read -p "Press Enter to close."; exit 1; }
+fi
 
-# Garde le terminal ouvert en cas d'erreur
-echo ""
-echo "Analyse terminée."
-read -p "Appuyez sur [Entrée] pour fermer ce terminal..."
+conda activate mua_sta
+mkdir -p "$HOME/.mua_sta"
+setsid python -m mua_sta > "$HOME/.mua_sta/mua_sta.log" 2>&1 < /dev/null &
+disown
