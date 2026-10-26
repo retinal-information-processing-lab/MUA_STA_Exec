@@ -91,17 +91,25 @@ def test_the_checkerboard_has_one_squares_box_for_both_axes(window, tmp_path):
     assert (spec.n_checks_x, spec.n_checks_y) == (24, 24)
 
 
-def test_choosing_a_library_measures_the_lattice_with_nothing_to_type(window):
-    window.bin_row.set_path(window.config.swn_bin)      # re-choosing re-measures
-    assert (window.config.checks_per_side, window.config.shifts_per_check) == (5, 2)
-    assert "shift" in window.status.text()
+def test_choosing_a_library_does_not_read_it(window, monkeypatch):
+    """Picking a file must not start any work: the lattice is measured when the step runs."""
+    import mua_sta.stimulus as st_mod
+    reads = []
+    monkeypatch.setattr(st_mod, "detect_swn_lattice",
+                        lambda *a, **k: reads.append(a) or (5, 2, ""))
+    window.bin_row.set_path(window.config.swn_bin)
+    window._refresh()
+    assert not reads
+    assert window.pipeline.stimulus is None
 
 
-def test_a_library_that_is_not_one_is_reported(window, tmp_path):
-    bad = tmp_path / "not.bin"
-    bad.write_bytes(b"\x00" * 64)
-    window.bin_row.set_path(str(bad))
-    assert "Could not measure" in window.status.text() or "bin header" in window.status.text()
+def test_the_lattice_is_measured_when_the_stimulus_step_runs(window):
+    seed_spikes(window.pipeline)
+    window._on_run_group("recording")
+    window._on_run_group("stimulus")
+    assert window.pipeline.stimulus is not None
+    assert window.pipeline.stimulus.shape[1:] == (10, 10)       # 5 checks x 2 shifts
+    assert "80x80" not in window.status.text()
 
 
 # -------------------------------------------------------------------------- the setup
@@ -216,10 +224,37 @@ def test_results_open_in_their_own_window(window):
     window._show_results()
     results = window.results_window
     assert results is not None and results.isWindow()
-    assert "electrodes" in results.summary.text()
+    assert results.grid is not None
     label = int(window.pipeline.results.labels[0])
     results.show_electrode(label)
-    assert f"electrode {label}" in results.electrode.text()
+    assert results.selected == label
+    assert results.highlight is not None            # the selection is a shape, not a caption
+    results.close()
+
+
+def test_the_results_window_has_no_settings(window):
+    """No orientation combo, no crop or flip boxes: the rig decides and the tiles are always
+    cropped to where the fields are."""
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window._show_results()
+    results = window.results_window
+    assert not results.findChildren(QtWidgets.QComboBox)
+    assert not results.findChildren(QtWidgets.QCheckBox)
+    assert [b.text() for b in results.findChildren(QtWidgets.QPushButton)] == ["Save image"]
+    results.close()
+
+
+def test_the_results_figure_can_be_saved(window, tmp_path, monkeypatch):
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    window._show_results()
+    results = window.results_window
+    target = tmp_path / "sta.png"
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getSaveFileName",
+                        staticmethod(lambda *a, **k: (str(target), "")))
+    results._on_save()
+    assert target.exists() and target.stat().st_size > 1000
     results.close()
 
 
@@ -236,16 +271,25 @@ def test_the_results_grid_click_maps_back_to_an_electrode(window):
     window.results_window.close()
 
 
-def test_orientation_is_a_display_setting_not_part_of_the_analysis(window):
+def test_the_grid_uses_the_rig_s_own_orientation(window):
+    """The stimulus axes are placed on the array by the rig, as its polarity and optics are."""
+    from mua_sta.rigs import rig, to_array_frame
     seed_spikes(window.pipeline)
     window.pipeline.run_all()
     window._show_results()
-    before = window.pipeline.step_key(ca.ANALYSIS)
     results = window.results_window
-    results.registration.setCurrentIndex(results.registration.findData("transpose"))
-    assert window.pipeline.step_key(ca.ANALYSIS) == before
-    assert window.pipeline.status(ca.ANALYSIS) is ca.Status.CACHED
-    assert "orientation transpose" in results.summary.text()
+    expected = to_array_frame(window.pipeline.results.spatial, window.config.mea)
+    direct = to_array_frame(window.pipeline.results.spatial,
+                            window.config.mea, rig(window.config.mea).array_registration)
+    assert np.array_equal(expected, direct)
+
+    # the tiles are always cropped to where the fields are, with no box to tick; on a fixture
+    # of pure noise there is nowhere to crop to and the whole frame is kept
+    from mua_sta import sta as sta_mod
+    box = sta_mod.field_bounds(to_array_frame(window.pipeline.results.spatial_raw,
+                                              window.config.mea))
+    rows, cols = expected.shape[1:]
+    assert results.grid.tile == ((box[1] - box[0], box[3] - box[2]) if box else (rows, cols))
     results.close()
 
 

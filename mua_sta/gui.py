@@ -227,19 +227,6 @@ class Window(QtWidgets.QMainWindow):
     def _on_swn_bin(self, path: str):
         self.config.swn_bin = path
         self._changed()
-        if path and self.config.swn_lattice_auto:
-            self._detect_lattice()
-
-    def _detect_lattice(self):
-        """Measure the noise lattice from the frames, so there is nothing to type in."""
-        try:
-            checks, shifts, note = st.detect_swn_lattice(self.config.swn_bin, self.config.mea)
-        except (OSError, ValueError) as error:
-            self._log(f"Could not measure the stimulus lattice: {error}", "error")
-            return
-        self.config.checks_per_side, self.config.shifts_per_check = checks, shifts
-        self._log(note)
-        self._changed()
 
     # ------------------------------------------------------------------- the run
     def _busy(self, busy: bool):

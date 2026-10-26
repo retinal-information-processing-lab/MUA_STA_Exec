@@ -5,5 +5,5 @@ numpy>=2
 scipy>=1.14
 spikeinterface>=0.105
 PyQt6>=6.7
-pyqtgraph>=0.14
+matplotlib>=3.9
 pytest

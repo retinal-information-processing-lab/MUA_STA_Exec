@@ -7,7 +7,8 @@ channel what it should be, and is the stimulus coming back the way it was projec
 from __future__ import annotations
 
 import numpy as np
-import pyqtgraph as pg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 from PyQt6 import QtCore, QtWidgets
 
 from . import cache as ca
@@ -152,24 +153,28 @@ class TriggerPlot(QtWidgets.QDialog):
                  triggers=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Trigger channel")
-        self.resize(820, 380)
+        self.resize(860, 400)
         layout = QtWidgets.QVBoxLayout(self)
 
-        plot = pg.PlotWidget()
-        plot.setLabel("bottom", "time (s)")
-        plot.setLabel("left", "ADC levels above zero")
-        plot.showGrid(x=True, y=True, alpha=0.15)
+        figure = Figure(figsize=(8.6, 3.4), facecolor="white")
+        canvas = FigureCanvasQTAgg(figure)
+        ax = figure.add_subplot(111)
         time, low, high = tg.envelope(trace, fs)
-        plot.plot(time, high, pen=pg.mkPen("#6FA8DC", width=1))
-        plot.addItem(pg.InfiniteLine(pos=threshold, angle=0,
-                                     pen=pg.mkPen(WARN, width=2,
-                                                  style=QtCore.Qt.PenStyle.DashLine)))
-        plot.setYRange(float(min(low.min(), 0)), float(max(high.max(), threshold) * 1.1 + 1))
-        layout.addWidget(plot)
+        ax.plot(time, high, color="#2D6A9F", linewidth=0.8)
+        ax.axhline(threshold, color="#D1495B", linestyle="--", linewidth=1.2)
+        ax.set_xlim(time[0], time[-1])
+        ax.set_ylim(min(low.min(), 0), max(high.max(), threshold) * 1.1 + 1)
+        ax.set_xlabel("Time (s)", fontsize=9)
+        ax.set_ylabel("ADC levels above zero", fontsize=9)
+        ax.tick_params(labelsize=8)
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+        figure.tight_layout()
+        layout.addWidget(canvas, stretch=1)
 
-        summary = f"threshold {threshold} levels ({tg.threshold_to_uv(threshold):,.0f} µV)"
+        summary = f"threshold {threshold} levels ({tg.threshold_to_uv(threshold):,.0f} \u00b5V)"
         if triggers is not None:
-            summary = f"{triggers.describe()} · {summary}"
+            summary = f"{triggers.describe()} \u00b7 {summary}"
         label = QtWidgets.QLabel(summary)
         label.setStyleSheet(f"color: {DIM};")
         layout.addWidget(label)
@@ -183,7 +188,7 @@ class FramePreview(QtWidgets.QDialog):
         self.config = config
         self.frames = frames
         self.setWindowTitle("Stimulus frame")
-        self.resize(560, 620)
+        self.resize(560, 640)
         layout = QtWidgets.QVBoxLayout(self)
 
         row = QtWidgets.QHBoxLayout()
@@ -198,13 +203,11 @@ class FramePreview(QtWidgets.QDialog):
         row.addStretch(1)
         layout.addLayout(row)
 
-        view = pg.GraphicsLayoutWidget()
-        self.box = view.addViewBox(lockAspect=True, enableMenu=False)
-        self.box.setMouseEnabled(x=False, y=False)
-        self.image = pg.ImageItem()
-        self.box.addItem(self.image)
-        self.box.sigResized.connect(lambda _: self.box.autoRange(items=[self.image]))
-        layout.addWidget(view, stretch=1)
+        self.figure = Figure(figsize=(5.4, 5.4), facecolor="white")
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.ax = self.figure.add_subplot(111)
+        self.figure.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.02)
+        layout.addWidget(self.canvas, stretch=1)
 
         self.note = QtWidgets.QLabel()
         self.note.setWordWrap(True)
@@ -232,7 +235,13 @@ class FramePreview(QtWidgets.QDialog):
                     f"{frame.shape[1]}x{frame.shape[0]}")
         else:
             note = "run the stimulus step, or tick full resolution to read the library directly"
+        self.ax.clear()
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        for spine in self.ax.spines.values():
+            spine.set_visible(False)
         if frame is not None:
-            self.image.setImage(frame, levels=(0.0, 1.0))
-            self.box.autoRange(items=[self.image])
-        self.note.setText(note + "  ·  shown as the retina saw it (+y up)")
+            self.ax.imshow(frame, cmap="gray", vmin=0.0, vmax=1.0, origin="lower",
+                           interpolation="nearest")
+        self.canvas.draw_idle()
+        self.note.setText(note + "  \u00b7  shown as the retina saw it (+y up)")

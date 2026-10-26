@@ -348,7 +348,7 @@ def stitch(
 
     The canvas is built so that **its row index increases upwards**: electrode row 0 (y = 0 in
     the probe file) is the first block, and within each tile STA row 0 is its first row. Drawn
-    with y increasing upwards — pyqtgraph's default, or ``origin="lower"`` in matplotlib — the
+    with y increasing upwards (``origin="lower"`` in matplotlib), the
     grid and every tile in it then read with +y up, which is the convention the standard
     pipeline uses for receptive-field positions and the one the four-squares orientation check
     assumes ("the cells whose receptive field is at the top respond to the top square"). The

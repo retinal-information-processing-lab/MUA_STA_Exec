@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
@@ -238,6 +238,7 @@ class SwnSpec:
     checks_per_side: int
     shifts_per_check: int
     mea: int
+    auto_lattice: bool = False      # measure the two above from the frames, when the step runs
     kind: str = SWN
 
     @property
@@ -256,12 +257,28 @@ class SwnSpec:
         header = read_header(self.bin_path)
         return settings.pxl_size_dmd * header["xsize"] / self.n_cells
 
+    def resolved(self) -> "SwnSpec":
+        """This spec with its lattice settled, measuring it from the frames if it is automatic.
+
+        Measuring reads a few frames, so it is deliberately not done when the file is merely
+        chosen: nothing should touch the stimulus until its step is actually asked to run.
+        """
+        if not self.auto_lattice:
+            return self
+        checks, shifts, _ = detect_swn_lattice(self.bin_path, self.mea)
+        return replace(self, checks_per_side=checks, shifts_per_check=shifts,
+                       auto_lattice=False)
+
     def cache_deps(self, n_frames: int) -> dict:
+        # When the lattice is measured it is a function of the file alone, so the file's
+        # identity stands in for the two numbers and the key needs no reading to compute.
         from .cache import file_identity
+        lattice = ({"lattice": "auto"} if self.auto_lattice
+                   else {"checks_per_side": self.checks_per_side,
+                         "shifts_per_check": self.shifts_per_check})
         return {"kind": self.kind, "bin": file_identity(self.bin_path),
                 "vec": file_identity(self.vec_path), "mea": self.mea,
-                "checks_per_side": self.checks_per_side,
-                "shifts_per_check": self.shifts_per_check, "n_frames": n_frames}
+                "n_frames": n_frames, **lattice}
 
     def build(self, n_frames: int, progress: Callable[[str], None] | None = None) -> np.ndarray:
         """The novel frames in the order they were shown, ``(n_frames, cells, cells)`` uint8.
@@ -269,6 +286,9 @@ class SwnSpec:
         Stops as soon as ``n_frames`` have been collected, so a recording that was cut short
         does not pay for the rest of the library.
         """
+        spec = self.resolved()
+        if spec is not self:
+            return spec.build(n_frames, progress)
         _, frame_indices = read_vec(self.vec_path)
         n_novel = novel_frame_count(frame_indices)
         novel = frame_indices[frame_indices < n_novel]

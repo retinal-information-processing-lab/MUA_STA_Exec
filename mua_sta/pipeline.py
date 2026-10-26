@@ -108,6 +108,7 @@ class Pipeline:
         self.trace: np.ndarray | None = None
         self.triggers: tg.Triggers | None = None
         self.stimulus: np.ndarray | None = None
+        self.stimulus_meta: dict = {}
         self.covariance: np.ndarray | None = None
         self.spikes: sp.SpikeTrains | None = None
         self.results: Results | None = None
@@ -119,6 +120,7 @@ class Pipeline:
         self.cache = ca.Cache.for_recording(self.config.recording_path or None)
         self.info = self.trace = self.triggers = None
         self.stimulus = self.covariance = self.spikes = self.results = None
+        self.stimulus_meta = {}
         self._loaded.clear()
 
     def ensure_info(self) -> rec.RecordingInfo:
@@ -290,6 +292,7 @@ class Pipeline:
             self.spikes = sp.SpikeTrains(cached["labels"], cached["offsets"], cached["times"])
         elif step == ca.STIMULUS:
             self.stimulus = cached["frames"]
+            self.stimulus_meta = cached["__meta__"]
         elif step == ca.COV:
             self.covariance = cached["covariance"]
         elif step == ca.ANALYSIS:
@@ -341,16 +344,18 @@ class Pipeline:
 
     def _compute_stimulus(self, step_key: str, progress: Progress | None):
         spec = self.config.stimulus_spec()
+        if hasattr(spec, "resolved"):
+            # reading the frames to measure the lattice happens here and nowhere earlier
+            spec = spec.resolved()
         n_frames = self.stimulus_frame_count()
         self.log(f"Rebuilding {st.KIND_LABELS[spec.kind]}: {n_frames} novel frames on a "
                  f"{spec.grid_shape[0]}x{spec.grid_shape[1]} grid"
                  + (f", {spec.cell_size_um:.1f} µm per cell" if spec.cell_size_um else ""),
                  "info")
         self.stimulus = spec.build(n_frames, progress=progress)
-        self.cache.store(ca.STIMULUS, step_key,
-                         meta={"kind": spec.kind, "cell_size_um": spec.cell_size_um,
-                               "grid_shape": list(spec.grid_shape)},
-                         frames=self.stimulus)
+        self.stimulus_meta = {"kind": spec.kind, "cell_size_um": spec.cell_size_um,
+                              "grid_shape": list(spec.grid_shape)}
+        self.cache.store(ca.STIMULUS, step_key, meta=self.stimulus_meta, frames=self.stimulus)
 
     def _compute_cov(self, step_key: str, progress: Progress | None):
         n_pixels = self.stimulus.shape[1] * self.stimulus.shape[2]
@@ -401,12 +406,12 @@ class Pipeline:
             spatial = sta_mod.whiten(spatial_raw, self.covariance, config.sigma_fraction)
             self._warn_if_whitening_hurt(spatial_raw, spatial)
         raster_times, raster_offsets = sta_mod.raster_trains(self.spikes, labels, repeated)
-        spec = config.stimulus_spec()
         self.results = Results(
             labels, sta_3d, spatial, spatial_raw, temporal, peak, raster_times, raster_offsets,
             {"n_sequences": n_sequences, "frequency": self.triggers.frequency,
              "whiten": bool(config.whiten and config.kind == st.SWN),
-             "kind": config.kind, "cell_size_um": spec.cell_size_um,
+             "kind": config.kind,
+             "cell_size_um": self.stimulus_meta.get("cell_size_um"),
              "temporal_dimension": config.temporal_dimension, "mea": config.mea})
         self.cache.store(ca.ANALYSIS, step_key, meta=self.results.meta, labels=labels,
                          sta_3d=sta_3d, spatial=spatial, spatial_raw=spatial_raw,

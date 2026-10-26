@@ -115,7 +115,7 @@ def test_a_new_threshold_does_not_re_read_the_trigger_channel(setup):
 
 
 @pytest.mark.parametrize("field, value", [
-    ("checks_per_side", 10),
+    ("swn_lattice_auto", False),
     ("temporal_dimension", 5),
     ("whiten", True),
 ])
@@ -283,3 +283,41 @@ def test_run_all_can_force_every_step(setup):
     pipeline.run_all(force=True)
     for step, stamp in stamps.items():
         assert pipeline.cache.path(step, pipeline.step_key(step)).stat().st_mtime_ns != stamp
+
+
+def test_a_measured_lattice_is_keyed_on_the_file_not_on_the_numbers(setup):
+    """With the lattice measured from the frames it is a function of the file alone, so the
+    key needs no reading to compute — which is what lets nothing touch the stimulus until its
+    step runs."""
+    config, tmp_path = setup
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run_all()
+    before = pipeline.step_key(ca.STIMULUS)
+
+    config.checks_per_side = 99                 # ignored while the lattice is measured
+    assert pipeline.step_key(ca.STIMULUS) == before
+    assert pipeline.status(ca.STIMULUS) is ca.Status.CACHED
+
+    config.swn_lattice_auto = False             # now the numbers are the key
+    assert pipeline.step_key(ca.STIMULUS) != before
+
+
+def test_choosing_a_library_does_not_read_it(setup, monkeypatch):
+    """The bug this fixes: picking the .bin used to measure its lattice straight away, which
+    looked like the stimulus being built without being asked for."""
+    config, tmp_path = setup
+    import mua_sta.stimulus as st_mod
+    reads = []
+    real = st_mod.detect_swn_lattice
+    monkeypatch.setattr(st_mod, "detect_swn_lattice",
+                        lambda *a, **k: reads.append(a) or real(*a, **k))
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run(ca.TRACE)
+    pipeline.run(ca.TRIGGERS)
+    pipeline.run(ca.SPIKES)
+    pipeline.step_key(ca.STIMULUS)              # asking for the key must not read either
+    assert not reads
+    pipeline.run(ca.STIMULUS)
+    assert reads                                # only now

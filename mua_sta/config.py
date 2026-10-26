@@ -59,11 +59,6 @@ class Config:
     whiten: bool = True
     sigma_fraction: float = sta.DEFAULT_SIGMA_FRACTION
 
-    # --- display
-    flip_grid_y: bool = False                    # row 0 at the top instead of the bottom
-    array_registration: str = ""                 # "" : this rig's measured default
-    crop_tiles: bool = True                      # narrow each tile to where the fields are
-
     path: str = field(default="", compare=False)        # where this was loaded from
     load_error: str = field(default="", compare=False)  # why a saved config could not be read
 
@@ -73,11 +68,6 @@ class Config:
         """The trigger threshold in use: whatever was typed, else this rig's default."""
         return rig(self.mea).trigger_threshold if self.trigger_threshold is None \
             else int(self.trigger_threshold)
-
-    @property
-    def registration(self) -> str:
-        """How stimulus axes sit on the electrode grid: whatever was chosen, else the rig's."""
-        return self.array_registration or rig(self.mea).array_registration
 
     def stimulus_spec(self):
         """A :class:`CheckerboardSpec` or :class:`SwnSpec` for the chosen stimulus kind."""
@@ -92,7 +82,8 @@ class Config:
                 raise ValueError("shifting white noise needs both a .bin and a .vec file")
             return stimulus.SwnSpec(
                 Path(self.swn_bin), Path(self.swn_vec),
-                self.checks_per_side, self.shifts_per_check, self.mea)
+                self.checks_per_side, self.shifts_per_check, self.mea,
+                self.swn_lattice_auto)
         raise ValueError(f"unknown stimulus kind {self.kind!r}")
 
     # --------------------------------------------------------------- read/write

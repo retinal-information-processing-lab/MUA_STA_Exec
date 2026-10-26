@@ -101,9 +101,19 @@ Caches live in `~/.mua_sta/cache`; the gear says how much they take.
 ![the results](ResourcesAndTools/results.png)
 
 They open in their own window when a run finishes, and the **⊞** button on the STA line brings
-them back. Every electrode's spatial STA is tiled onto the array; click one for its receptive
-field, its temporal profile and its raster over the repeated halves. The controls along the top
-are display only and never invalidate a cached step — see *Orientation*.
+them back. Every electrode's receptive field is tiled onto the array; click one to see it
+larger, with its temporal profile and its raster over the repeated halves. The selected
+electrode is marked by a square rather than a caption.
+
+There is nothing to set. The stimulus axes are placed on the electrode grid by the rig's own
+registration, the way its polarity and optics are (see *Orientation*), and the tiles are always
+cropped to the window the receptive fields actually fall in — measured from the data, from the
+unwhitened STA where the fields are unambiguous. **Save image** writes the figure as it stands
+to a PNG, PDF or SVG of your choosing.
+
+The figure is matplotlib, drawn the way the standard pipeline draws these — same `RdBu_r`
+colour map, same time vector for the temporal STA (one bin per displayed frame, ending at the
+spike).
 
 ## The two stimuli
 
@@ -130,8 +140,9 @@ step being a fraction of a check. The analysis grid therefore has one cell per s
 exact rather than an approximation — because the grid only ever moves by whole shift steps,
 every check edge lands on a cell boundary, so a cell always sits inside a single check.
 
-**Nothing has to be typed in**: choosing a frame library measures both numbers from its frames
-and says what it found on the status line. Getting the shift count right matters: for the MEA3
+**Nothing has to be typed in**: the two numbers are measured from the frames themselves. That
+happens when the Stimulus step runs, not when the file is chosen — nothing reads a stimulus
+until it is asked to — and the step reports what it found. Getting the shift count right matters: for the MEA3
 library `20250512_4_SWN_48pixCh_6pixShift_30Hz_MEA3.bin`, the frames are drawn at 672 px for a
 480 px design, so a check is 67.2 px and a shift step 8.4 px — 10 checks of 8 shifts, an 80×80
 grid at 21 µm per cell. `frame[::6, ::6]`, which the standard pipeline's `swn_shift_x = 6`
@@ -182,23 +193,23 @@ end, open the same `.bin`/`.vec` in the StimulusDisplayer and in the **▣** but
 **full resolution** ticked — at the same frame index, and confirm they match.
 
 **How the array sits in that frame.** No stimulus file can tell you this one: it is a property
-of the setup. It is measured from the data instead, by the fact that an electrode's position on
-the array has to predict where its receptive field is — which holds under exactly one of the
-eight ways two image frames can be related. **Check orientation**, in the results window, tries all
-eight and reports them. On MEA3 the answer is `transpose_flip_xy` at r = +0.98, with the next
-best at +0.12: a transpose and two flips away from the identity the previous version of this
-tool assumed. That default is in `rigs.py`; MEA1 and MEA2 are still `identity` and
-**unverified** — run Check orientation on a recording from them and put the answer there.
+of the setup, like the polarity and the optics, so it lives in `rigs.py` next to them and is
+applied automatically. It was *measured* rather than assumed, by the fact that an electrode's
+position on the array has to predict where its receptive field is — which holds under exactly
+one of the eight ways two image frames can be related. On MEA3 the answer is
+`transpose_flip_xy` at r = +0.98, with the next best at +0.12: a transpose and two flips away
+from the identity the first version of this tool assumed. MEA1 and MEA2 are still `identity`
+and **unverified**; `sta.measure_registration` is the function that settles it, and running it
+on a recording from those rigs is what the value in `rigs.py` should come from.
 
 Results are then drawn with **+y up**: electrode row 0 (y = 0 in the probe file) is at the
 bottom of the grid, and so is row 0 of each tile. That matches the receptive-field frame the
 standard analysis pipeline uses and the four-squares orientation check ("the cells whose
 receptive field is at the top respond to the top square").
 
-The overview crops every tile to the window the receptive fields actually fall in, measured
-from the data: the stimulus covers far more retina than the array does (1680 µm against 480 µm
-on MEA3), so otherwise most of each tile is empty and the shift between neighbours is a few
-cells in eighty. Untick **crop tiles to the fields** to see the whole stimulus field.
+The overview always crops every tile to the window the receptive fields actually fall in: the
+stimulus covers far more retina than the array does (1680 µm against 480 µm on MEA3), so
+otherwise most of each tile is empty and the shift between neighbours is a few cells in eighty.
 
 ## What changed from the previous version
 

@@ -1,30 +1,34 @@
-"""The results window: every electrode's receptive field, and how the array sits in it.
+"""The results window: one figure, and a button to save it.
 
-Kept apart from the control window so that one can stay small. Everything here is about
-looking at a finished analysis — nothing in it changes what was computed, so the orientation
-controls never invalidate a cached step.
+Deliberately plain. Every electrode's receptive field tiled onto the array on the left, the one
+you click on the right. No settings: the stimulus axes are placed on the electrode grid by the
+rig's own registration, the way its polarity and optics are, and the tiles are always cropped
+to where the fields actually are — the stimulus covers far more retina than the array does, so
+otherwise most of every tile is empty.
+
+Drawn with matplotlib rather than pyqtgraph, as the standard pipeline draws it, which also
+makes saving the figure the same operation as showing it.
 """
 from __future__ import annotations
 
 import numpy as np
-import pyqtgraph as pg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 from PyQt6 import QtCore, QtWidgets
 
 from . import sta as sta_mod
-from . import stimulus as st
 from .config import Config
-from .rigs import ARRAY_REGISTRATIONS, rig, to_array_frame
-from .theme import DIM
-from .widgets import button, combo_box
+from .rigs import to_array_frame
+from .widgets import button
 
-pg.setConfigOptions(imageAxisOrder="row-major", antialias=False)
-
-#: Blue for negative, white for nothing, red for positive — as the lab's stitched figure.
-STA_COLOURS = pg.ColorMap([0.0, 0.5, 1.0], [(50, 90, 255), (255, 255, 255), (255, 60, 60)])
+#: Blue negative, white nothing, red positive — the colour map the pipeline uses for STAs.
+CMAP = "RdBu_r"
+TEXT = "#222222"
 
 
 class ResultsWindow(QtWidgets.QWidget):
-    """The 16x16 grid of spatial STAs, and one electrode in detail when you click it."""
+    """The array of receptive fields, and one electrode in detail when you click it."""
 
     def __init__(self, config: Config, mapping: dict[int, tuple[int, int]], log, parent=None):
         super().__init__(parent, QtCore.Qt.WindowType.Window)
@@ -35,90 +39,44 @@ class ResultsWindow(QtWidgets.QWidget):
         self.grid = None
         self.selected: int | None = None
         self.setWindowTitle("MUA STA — results")
-        self.resize(1380, 900)
-        self._build()
+        self.resize(1180, 740)
 
-    def _build(self):
-        layout = QtWidgets.QHBoxLayout(self)
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        layout.addWidget(splitter)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 6)
+        self.figure = Figure(figsize=(11.8, 7.0), facecolor="white")
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.mpl_connect("button_press_event", self._on_click)
+        layout.addWidget(self.canvas, stretch=1)
 
-        left = QtWidgets.QWidget()
-        column = QtWidgets.QVBoxLayout(left)
-        self.summary = QtWidgets.QLabel("no analysis yet")
-        self.summary.setStyleSheet(f"color: {DIM};")
-        self.summary.setWordWrap(True)
-        column.addWidget(self.summary)
+        bar = QtWidgets.QHBoxLayout()
+        bar.setContentsMargins(8, 0, 8, 0)
+        bar.addStretch(1)
+        bar.addWidget(button("Save image", self._on_save))
+        layout.addLayout(bar)
 
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(QtWidgets.QLabel("array orientation"))
-        self.registration = combo_box(
-            [("this rig's default", "")] + [(name, name) for name in ARRAY_REGISTRATIONS],
-            self.config.array_registration, self._on_registration)
-        self.registration.setToolTip(
-            "how the stimulus axes sit on the electrode grid — a property of the setup, not of "
-            "the stimulus file. Check orientation measures it from the data.")
-        row.addWidget(self.registration)
-        row.addWidget(button("Check orientation", self._on_check_orientation,
-                             "measure it: an electrode's position has to predict where its "
-                             "receptive field is"))
-        self.crop = QtWidgets.QCheckBox("crop tiles to the fields")
-        self.crop.setChecked(self.config.crop_tiles)
-        self.crop.setToolTip("the stimulus covers much more of the retina than the array does, "
-                             "so most of each tile is empty")
-        self.crop.toggled.connect(self._on_crop)
-        row.addWidget(self.crop)
-        self.flip = QtWidgets.QCheckBox("row 0 at the top")
-        self.flip.setChecked(self.config.flip_grid_y)
-        self.flip.toggled.connect(self._on_flip)
-        row.addWidget(self.flip)
-        row.addStretch(1)
-        column.addLayout(row)
-
-        view = pg.GraphicsLayoutWidget()
-        self.grid_box = view.addViewBox(lockAspect=True, enableMenu=False)
-        self.grid_image = pg.ImageItem()
-        self.grid_image.setLookupTable(STA_COLOURS.getLookupTable(nPts=256))
-        self.grid_box.addItem(self.grid_image)
-        view.scene().sigMouseClicked.connect(self._on_click)
-        column.addWidget(view, stretch=1)
-        splitter.addWidget(left)
-
-        right = QtWidgets.QWidget()
-        column = QtWidgets.QVBoxLayout(right)
-        self.electrode = QtWidgets.QLabel("click an electrode on the grid")
-        self.electrode.setStyleSheet(f"color: {DIM};")
-        self.electrode.setWordWrap(True)
-        column.addWidget(self.electrode)
-        detail = pg.GraphicsLayoutWidget()
-        self.cell_box = detail.addViewBox(lockAspect=True, enableMenu=False, row=0, col=0)
-        self.cell_box.setMouseEnabled(x=False, y=False)
-        self.cell_image = pg.ImageItem()
-        self.cell_image.setLookupTable(STA_COLOURS.getLookupTable(nPts=256))
-        self.cell_box.addItem(self.cell_image)
-        self.cell_box.sigResized.connect(
-            lambda _: self.cell_box.autoRange(items=[self.cell_image]))
-        self.temporal_plot = detail.addPlot(row=1, col=0)
-        self.temporal_plot.setLabel("bottom", "time before the spike (s)")
-        self.temporal_plot.setLabel("left", "STA")
-        self.temporal_plot.showGrid(x=True, y=True, alpha=0.15)
-        self.temporal = self.temporal_plot.plot(pen=pg.mkPen("#FFD700", width=2))
-        self.raster_plot = detail.addPlot(row=2, col=0)
-        self.raster_plot.setLabel("bottom", "time in the repeated half (s)")
-        self.raster_plot.setLabel("left", "sequence")
-        self.raster = pg.PlotCurveItem(pen=pg.mkPen("#E0E0E0", width=1), connect="pairs")
-        self.raster_plot.addItem(self.raster)
-        detail.ci.layout.setRowStretchFactor(0, 3)
-        detail.ci.layout.setRowStretchFactor(1, 2)
-        detail.ci.layout.setRowStretchFactor(2, 3)
-        column.addWidget(detail, stretch=1)
-        splitter.addWidget(right)
-        splitter.setSizes([780, 460])
+        grid = self.figure.add_gridspec(3, 2, width_ratios=[1.75, 1.0],
+                                        height_ratios=[3.0, 2.0, 2.0],
+                                        left=0.015, right=0.975, top=0.975, bottom=0.07,
+                                        wspace=0.10, hspace=0.45)
+        self.ax_grid = self.figure.add_subplot(grid[:, 0])
+        self.ax_cell = self.figure.add_subplot(grid[0, 1])
+        self.ax_time = self.figure.add_subplot(grid[1, 1])
+        self.ax_raster = self.figure.add_subplot(grid[2, 1])
+        for ax in (self.ax_grid, self.ax_cell):
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+        for ax in (self.ax_time, self.ax_raster):
+            ax.tick_params(labelsize=8, colors=TEXT)
+            for spine in ("top", "right"):
+                ax.spines[spine].set_visible(False)
+        self.highlight: Rectangle | None = None
 
     # ------------------------------------------------------------------- drawing
     def show_results(self, results):
-        """Take a finished analysis and draw it; call again to redraw after a new run."""
         self.results = results
+        self.selected = None
         self.draw()
         self.show()
         self.raise_()
@@ -127,115 +85,105 @@ class ResultsWindow(QtWidgets.QWidget):
     def draw(self):
         if self.results is None:
             return
-        registered = to_array_frame(self.results.spatial, self.config.mea,
-                                    self.config.registration)
-        crop = None
-        if self.config.crop_tiles:
-            # measured on the unwhitened STA, where the fields are unambiguous
-            crop = sta_mod.field_bounds(to_array_frame(
-                self.results.spatial_raw, self.config.mea, self.config.registration))
-        self.grid = sta_mod.stitch(registered, self.results.labels, self.mapping, crop=crop)
-        image = np.nan_to_num(self.grid.image, nan=0.0)
-        if self.config.flip_grid_y:
-            image = image[::-1]
-        self.grid_image.setImage(image, levels=(-1.0, 1.0))
-        self.grid_box.autoRange(items=[self.grid_image])
+        spatial = to_array_frame(self.results.spatial, self.config.mea)
+        # the window to crop to is taken from the unwhitened STA, where the fields are plain
+        crop = sta_mod.field_bounds(to_array_frame(self.results.spatial_raw, self.config.mea))
+        self.grid = sta_mod.stitch(spatial, self.results.labels, self.mapping, crop=crop)
 
-        meta = self.results.meta
-        whitened = " · whitened" if meta.get("whiten") else ""
-        where = "row 0 at the top" if self.config.flip_grid_y else "row 0 at the bottom (+y up)"
-        self.summary.setText(
-            f"{self.results.labels.size} electrodes · {st.KIND_LABELS[meta['kind']]} · "
-            f"{self.results.n_sequences} sequences · {meta['frequency']:.2f} Hz{whitened} · "
-            f"orientation {self.config.registration} · "
-            f"{self.grid.tile[0]}x{self.grid.tile[1]} cells per tile · {where}")
+        self.ax_grid.clear()
+        self.ax_grid.set_xticks([])
+        self.ax_grid.set_yticks([])
+        for spine in self.ax_grid.spines.values():
+            spine.set_visible(False)
+        self.ax_grid.imshow(np.ma.masked_invalid(self.grid.image), cmap=CMAP, vmin=-1, vmax=1,
+                            origin="lower", interpolation="nearest")
+        self.highlight = None
         if self.selected is not None:
-            self.show_electrode(self.selected)
+            self.show_electrode(self.selected, redraw=False)
+        else:
+            for ax in (self.ax_cell, self.ax_time, self.ax_raster):
+                ax.clear()
+                ax.set_xticks([])
+                ax.set_yticks([])
+        self.canvas.draw_idle()
 
     def _on_click(self, event):
-        if self.results is None or self.grid is None:
+        if self.results is None or self.grid is None or event.inaxes is not self.ax_grid:
             return
-        point = self.grid_box.mapSceneToView(event.scenePos())
-        y = point.y()
-        if self.config.flip_grid_y:
-            y = self.grid.image.shape[0] - 1 - y
-        label = self.grid.electrode_at(point.x(), y, self.mapping)
+        if event.xdata is None or event.ydata is None:
+            return
+        label = self.grid.electrode_at(event.xdata, event.ydata, self.mapping)
         if label is not None:
             self.selected = label
             self.show_electrode(label)
 
-    def show_electrode(self, label: int):
+    def show_electrode(self, label: int, redraw: bool = True):
         results = self.results
         index = results.index_of(label)
         if index is None:
             return
+        self.selected = label
+        rows, cols = self.grid.tile
         row, col = self.mapping[label]
-        lag = results.peak[index][0]
-        frequency = results.meta["frequency"] or 1.0
-        depth = results.sta_3d.shape[1]
+        if self.highlight is not None:
+            self.highlight.remove()
+        self.highlight = Rectangle((col * (cols + self.grid.padding) - 0.5,
+                                    row * (rows + self.grid.padding) - 0.5), cols, rows,
+                                   fill=False, edgecolor="#111111", linewidth=1.4)
+        self.ax_grid.add_patch(self.highlight)
 
-        cell = to_array_frame(results.spatial[index], self.config.mea,
-                              self.config.registration)
-        self.cell_image.setImage(cell, levels=(-1.0, 1.0))
-        self.cell_box.autoRange(items=[self.cell_image])
-        self.temporal.setData((np.arange(depth) - (depth - 1)) / frequency,
-                              results.temporal[index])
-        self.temporal_plot.setYRange(-1.05, 1.05)
+        depth = results.sta_3d.shape[1]
+        frequency = results.meta["frequency"] or 1.0
+
+        self.ax_cell.clear()
+        self.ax_cell.set_xticks([])
+        self.ax_cell.set_yticks([])
+        for spine in self.ax_cell.spines.values():
+            spine.set_visible(False)
+        cell = to_array_frame(results.spatial[index], self.config.mea)
+        if crop_box := sta_mod.field_bounds(
+                to_array_frame(results.spatial_raw, self.config.mea)):
+            r0, r1, c0, c1 = crop_box
+            cell = cell[r0:r1, c0:c1]
+        self.ax_cell.imshow(cell, cmap=CMAP, vmin=-1, vmax=1, origin="lower",
+                            interpolation="nearest")
+
+        # the pipeline's time vector: one bin per frame, ending at the spike
+        time = np.flip(np.arange(0, -depth / frequency, -1 / frequency))[:depth]
+        self.ax_time.clear()
+        self.ax_time.axhline(0, color="#BBBBBB", linewidth=0.8)
+        self.ax_time.plot(time, results.temporal[index], color="#D1495B", linewidth=1.6)
+        self.ax_time.set_xlim(time[0], 0)
+        self.ax_time.set_ylim(-1.05, 1.05)
+        self.ax_time.set_xlabel("Time (s)", fontsize=8, color=TEXT)
+        self.ax_time.tick_params(labelsize=8, colors=TEXT)
+        for spine in ("top", "right"):
+            self.ax_time.spines[spine].set_visible(False)
 
         trains = results.raster(label)
-        sizes = np.array([train.size for train in trains])
-        if sizes.sum():
-            x = np.repeat(np.concatenate(trains), 2)
-            base = np.repeat(np.arange(len(trains)), 2 * sizes)
-            self.raster.setData(x, base + np.tile([0.05, 0.95], int(sizes.sum())))
-        else:
-            self.raster.setData([], [])
-        self.raster_plot.setYRange(0, max(1, len(trains)))
+        self.ax_raster.clear()
+        if any(train.size for train in trains):
+            self.ax_raster.eventplot(trains, colors="#222222", linewidths=0.4)
+        self.ax_raster.set_xlim(0, max(1e-3, max((t.max() for t in trains if t.size),
+                                                 default=1.0)))
+        self.ax_raster.set_ylim(-0.5, max(1, len(trains)) - 0.5)
+        self.ax_raster.set_xlabel("Time (s)", fontsize=8, color=TEXT)
+        self.ax_raster.tick_params(labelsize=8, colors=TEXT)
+        for spine in ("top", "right"):
+            self.ax_raster.spines[spine].set_visible(False)
 
-        quality = sta_mod.rf_quality(results.spatial[index])
-        self.electrode.setText(
-            f"electrode {label} · grid row {row}, column {col} · peak at lag "
-            f"{(lag - (depth - 1)) / frequency * 1000:.0f} ms · receptive-field strength "
-            f"{quality:.0f} · {int(sizes.sum())} spikes in the repeated halves")
+        if redraw:
+            self.canvas.draw_idle()
 
-    # --------------------------------------------------------------- orientation
-    def _on_registration(self, value):
-        self.config.array_registration = str(value)
-        self.config.save()
-        self.draw()
-
-    def _on_crop(self, on: bool):
-        self.config.crop_tiles = bool(on)
-        self.config.save()
-        self.draw()
-
-    def _on_flip(self, on: bool):
-        self.config.flip_grid_y = bool(on)
-        self.config.save()
-        self.draw()
-
-    def _on_check_orientation(self):
-        """Measure how the array sits in the stimulus, from the receptive fields themselves."""
+    # ---------------------------------------------------------------------- saving
+    def _on_save(self):
         if self.results is None:
-            self.log("Run the analysis first: there are no receptive fields to measure", "warn")
             return
-        # measured on the unwhitened STA: whitening is there to sharpen a field, not to find
-        # one, and on noisy multi-unit data it scatters the peaks the measurement relies on
-        scores = sta_mod.measure_registration(self.results.spatial_raw, self.results.labels,
-                                              self.mapping)
-        best, score = scores[0]
-        self.log("Array orientation: "
-                 + ", ".join(f"{name} {value:+.2f}" for name, value in scores[:4]), "info")
-        if score < 0.5:
-            self.log(f"No clear winner (best {best} at {score:+.2f}). Either there are too few "
-                     "receptive fields, or the stimulus geometry is wrong.", "warn")
+        start = str(self.config.last_dir or "")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save the figure", f"{start}/mua_sta.png" if start else "mua_sta.png",
+            "PNG image (*.png);;PDF (*.pdf);;SVG (*.svg)")
+        if not path:
             return
-        current = self.config.registration
-        if best == current:
-            self.log(f"{rig(self.config.mea).label}: {best} confirmed ({score:+.2f}, next "
-                     f"{scores[1][1]:+.2f}) — the grid is drawn the right way round", "info")
-        else:
-            self.log(f"{rig(self.config.mea).label}: the data says {best} ({score:+.2f}), not "
-                     f"{current}. Setting it for this session; put it in mua_sta/rigs.py to "
-                     "keep it.", "warn")
-            self.registration.setCurrentIndex(self.registration.findData(best))
+        self.figure.savefig(path, dpi=150, facecolor="white")
+        self.log(f"Saved {path}")
