@@ -168,7 +168,8 @@ class Pipeline:
                 stimulus_key = self.step_key(ca.STIMULUS)
                 if stimulus_key is None:
                     return None
-                return ca.key(stimulus=stimulus_key)
+                # ddof: divided by n - 1 as np.cov does, so no entry from before that is reused
+                return ca.key(stimulus=stimulus_key, ddof=1)
             if step == ca.ANALYSIS:
                 parts = {name: self.step_key(name)
                          for name in (ca.TRIGGERS, ca.SPIKES, ca.STIMULUS)}
@@ -176,7 +177,7 @@ class Pipeline:
                     return None
                 if config.whiten:
                     parts["cov"] = self.step_key(ca.COV)
-                    parts["sigma_fraction"] = config.sigma_fraction
+                    parts["whiten_sigma"] = config.whiten_sigma
                 return ca.key(frames_per_sequence=config.frames_per_sequence,
                               temporal_dimension=config.temporal_dimension,
                               whiten=config.whiten, **parts)
@@ -442,10 +443,11 @@ class Pipeline:
         if config.whiten and config.kind == st.SWN:
             self.run(ca.COV, progress)
             self.log(f"Whitening the spatial STAs (one factorisation for all electrodes, "
-                     f"sigma = {config.sigma_fraction:.1%} of the pixel variance)", "info")
+                     f"sigma = {config.whiten_sigma:g} added to the covariance diagonal)",
+                     "info")
             if progress is not None:
                 progress(0, 0, "whitening")
-            spatial = sta_mod.whiten(spatial_raw, self.covariance, config.sigma_fraction)
+            spatial = sta_mod.whiten(spatial_raw, self.covariance, config.whiten_sigma)
             self._warn_if_whitening_hurt(spatial_raw, spatial)
         raster_times, raster_offsets = sta_mod.raster_trains(self.spikes, labels, repeated)
         self.results = Results(

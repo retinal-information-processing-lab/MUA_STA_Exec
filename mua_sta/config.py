@@ -57,7 +57,7 @@ class Config:
     frames_per_sequence: int = sta.DEFAULT_FRAMES_PER_SEQUENCE
     temporal_dimension: int = sta.DEFAULT_TEMPORAL_DIMENSION
     whiten: bool = True
-    sigma_fraction: float = sta.DEFAULT_SIGMA_FRACTION
+    whiten_sigma: float = sta.DEFAULT_WHITEN_SIGMA
 
     path: str = field(default="", compare=False)        # where this was loaded from
     load_error: str = field(default="", compare=False)  # why a saved config could not be read

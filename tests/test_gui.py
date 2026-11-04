@@ -326,7 +326,7 @@ def test_the_trigger_plot_summarises_the_triggers(window):
 def test_the_settings_dialog_edits_the_config(window):
     dialog = SettingsDialog(window.config, window.pipeline.cache, window)
     dialog.sigma.setValue(2.5)
-    assert window.config.sigma_fraction == pytest.approx(0.025)
+    assert window.config.whiten_sigma == pytest.approx(2.5)
     dialog.checks.setEnabled(True)
     dialog.checks.setValue(7)
     assert window.config.checks_per_side == 7

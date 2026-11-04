@@ -170,26 +170,26 @@ black and white.
 
 SWN frames are spatially correlated — with `s` shifts per check, two cells `d` steps apart
 share a check with probability `1 − d/s` — so the raw STA is the receptive field blurred by the
-stimulus's own covariance. **whiten the spatial STA**, in the gear, divides that back out (`C⁻¹·STA`, the
-linear-regression estimate of the filter). The covariance is a property of the *stimulus*,
-identical for every electrode, so it is factorised once and reused for all 252 of them: the
-same answer as solving per electrode, and hundreds of times faster. **Regularisation** is a
-percentage of the pixel variance, so it means the same thing whatever the contrast — unlike
-the standard pipeline's fixed `sigma = 5.0`, which is about twenty times the variance of a
-black-and-white stimulus and leaves the whitening doing nothing at all.
+stimulus's own covariance. **whiten the spatial STA**, in the gear, divides that back out
+(`C⁻¹·STA`, the linear-regression estimate of the filter), computed exactly as the standard
+pipeline's `decorrelate_spatial_stas` does: `C = np.cov(stimulus)` with pixels in 0..1, then
+`np.linalg.solve(C + σ·I, spatial_sta)` with the pipeline's **σ = 5.0**
+(`swn_cov_regularization`), which the gear's **regularisation** sets. The covariance is a
+property of the *stimulus*, identical for every electrode, so it is factorised once and reused
+for all 252 of them: the same answer as solving per electrode, and hundreds of times faster.
+Each whitened map is then divided by its largest value so the grid draws it on the same scale
+as the raw one. The stimulus it is computed on is this tool's 80x80 cell-centre lattice, not
+the pipeline's `frame[::6, ::6]` (see above), so on MEA3 the numbers differ from the
+pipeline's by that, and by nothing in the whitening itself.
 
-> **On multi-unit data it usually makes things worse, and it is on by default.** Measured on
-> `20251013_PupilSize/01_Swn` (252 electrodes, 9.1 M spikes), sweeping sigma from 0.5 % to
-> 2000 %: unwhitened, receptive-field quality is 36 and electrode position predicts field
-> position at r = +0.98; whitened at 5 %, quality drops to 6 and r to +0.11, with the peaks
-> scattered over the whole field. It only recovers as sigma grows large enough to make the
-> whitening a no-op. The reason is that a shifting stimulus's covariance carries very little
-> variance at high spatial frequencies, so its inverse amplifies them — and a multi-unit STA,
-> pooled over everything the electrode picked up, is noisy there. It is worth having for
-> comparing against the standard pipeline's sorted single-cell STAs, which are far cleaner.
-> The tool measures the before and after and says so on the status line and in the log when
-> whitening has cost you, and the unwhitened STA is always kept alongside, so **untick it in the
-> gear** if the grid looks like noise.
+> **σ is measured against the covariance's eigenvalues, not the pixel variance.** On an 80x80
+> SWN grid, where a check spans 8x8 cells, they run from ~16 down to almost nothing at the
+> spatial frequencies the stimulus barely carries. At σ = 5.0 the receptive fields come out
+> somewhat tighter than the raw STA's; at a few hundredths, those nearly empty frequencies are
+> amplified a thousandfold and a multi-unit STA, pooled over everything the electrode picked
+> up, is buried under its own noise. The tool measures the before and after and says so on the
+> status line and in the log when whitening has cost you, and the unwhitened STA is always kept
+> alongside, so **untick it in the gear** if the grid looks like noise.
 
 Checkerboard frames are already uncorrelated, so there is nothing to whiten and the step does
 not appear.

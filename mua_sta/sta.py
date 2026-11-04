@@ -35,8 +35,9 @@ REPEATED_HALF = (0.5, 1.0)
 
 DEFAULT_TEMPORAL_DIMENSION = 30
 DEFAULT_FRAMES_PER_SEQUENCE = 1200
-#: Regularisation added to the covariance diagonal, as a fraction of the mean pixel variance.
-DEFAULT_SIGMA_FRACTION = 0.05
+#: Added to the stimulus covariance's diagonal before inverting it, in the stimulus's own units
+#: (pixels in 0..1) — the standard pipeline's ``params.swn_cov_regularization``.
+DEFAULT_WHITEN_SIGMA = 5.0
 
 
 def sequence_edges(
@@ -179,7 +180,8 @@ def stimulus_covariance(
     chunk: int = 2048,
     progress: Callable[[int, int, str], None] | None = None,
 ) -> np.ndarray:
-    """Covariance of the stimulus's pixels, unregularised.
+    """Covariance of the stimulus's pixels, unregularised: what the standard pipeline's
+    ``np.cov(stimulus_matrix.T)`` computes, pixels in 0..1 and divided by ``n_frames - 1``.
 
     Accumulated in chunks, so the whole ``(n_frames, n_pixels)`` matrix is never materialised
     (0.7 GB for a 27 000-frame 80x80 stimulus). The regularisation is deliberately *not* folded
@@ -197,36 +199,36 @@ def stimulus_covariance(
         if progress is not None:
             progress(min(start + chunk, n_frames), n_frames, "stimulus covariance")
     mean = total / n_frames
-    return gram / n_frames - np.outer(mean, mean)
+    return (gram - n_frames * np.outer(mean, mean)) / (n_frames - 1)
 
 
 def whiten(
-    spatial: np.ndarray, cov: np.ndarray, sigma_fraction: float = DEFAULT_SIGMA_FRACTION
+    spatial: np.ndarray, cov: np.ndarray, sigma: float = DEFAULT_WHITEN_SIGMA
 ) -> np.ndarray:
     """``(C + sigma I)^-1`` applied to every electrode's spatial STA, with one factorisation.
 
-    ``spatial`` is ``(n_electrodes, rows, cols)``; the result is renormalised per electrode the
-    same way the raw STA is, so the two are directly comparable.
+    The standard pipeline's ``decorrelate_spatial_stas``: ``np.linalg.solve(C_I, spatial)``
+    with ``C_I = cov + sigma * I``. It solves once per cell; the covariance is the same for
+    every electrode, so here it is factorised once and reused, which gives the same answer.
+    ``spatial`` is ``(n_electrodes, rows, cols)``. Each whitened map is then divided by its
+    largest excursion so the grid can draw it on the same -1..1 scale as the raw STA — a
+    positive factor, so the map is otherwise exactly the pipeline's.
 
-    ``sigma_fraction`` is a fraction of the mean pixel variance, which keeps it meaningful
-    whatever the stimulus contrast. It matters more than it looks: a shifting stimulus's
-    covariance is strongly banded, so its high spatial frequencies carry very little variance
-    and an under-regularised inverse amplifies them — on a multi-unit STA, which is noisy, that
-    buries the receptive field instead of sharpening it. The standard pipeline's fixed
-    ``sigma = 5.0`` errs the other way: about twenty times the variance of a black-and-white
-    stimulus, which leaves the whitening doing nothing at all.
+    ``sigma`` is in the covariance's units, pixels in 0..1, so its scale is set by the
+    covariance's eigenvalues: up to ~16 for an 80x80 SWN grid, where a check spans 8x8 cells,
+    and tiny for the high spatial frequencies the stimulus barely carries. The pipeline's 5.0
+    still sharpens the receptive fields; a far smaller value amplifies those frequencies until
+    a noisy multi-unit STA is buried under them.
     """
     n_elec, rows, cols = spatial.shape
     regularised = cov.copy()
-    sigma = float(sigma_fraction * np.mean(np.diag(cov)))
-    regularised[np.diag_indices_from(regularised)] += sigma
+    regularised[np.diag_indices_from(regularised)] += float(sigma)
     factor = cho_factor(regularised, lower=True, check_finite=False)
     flat = spatial.reshape(n_elec, rows * cols).astype(np.float64)
     live = np.max(np.abs(flat), axis=1) > 0
     out = np.zeros_like(flat)
     if live.any():
         out[live] = cho_solve(factor, flat[live].T, check_finite=False).T
-        out[live] -= np.median(out[live], axis=1, keepdims=True)
         scale = np.max(np.abs(out[live]), axis=1, keepdims=True)
         out[live] = np.divide(out[live], scale, out=out[live], where=scale > 0)
     return out.reshape(n_elec, rows, cols).astype(np.float32)

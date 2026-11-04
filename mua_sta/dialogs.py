@@ -83,9 +83,10 @@ class SettingsDialog(QtWidgets.QDialog):
         note.setStyleSheet(f"color: {DIM}; font-size: 8pt;")
         form.addRow(note)
         form.addRow(self._check("whiten the spatial STA", "whiten"))
-        self.sigma = spin_box(config.sigma_fraction * 100, 0.01, 2000, " %", 2, 0.5,
-                              lambda v: setattr(config, "sigma_fraction", float(v) / 100))
-        self.sigma.setToolTip("regularisation, as a percentage of the pixel variance")
+        self.sigma = spin_box(config.whiten_sigma, 0.001, 1000, "", 3, 0.5,
+                              slot=self._set("whiten_sigma", float))
+        self.sigma.setToolTip("sigma added to the stimulus covariance's diagonal, pixels in "
+                              "0..1 — the standard pipeline's swn_cov_regularization, 5.0")
         form.addRow("regularisation", self.sigma)
         layout.addWidget(whitening)
 

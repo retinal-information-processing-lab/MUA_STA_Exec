@@ -130,7 +130,7 @@ def test_whitening_sharpens_a_blurred_receptive_field():
                                              # lag 0 of a one-frame STA is where it shows up
     raw = sta_mod.compute_sta(counts, stimulus, temporal_dimension=1)[0, 0]
     cov = sta_mod.stimulus_covariance(stimulus)
-    sharp = sta_mod.whiten(raw[None], cov, sigma_fraction=0.01)[0]
+    sharp = sta_mod.whiten(raw[None], cov, sigma=0.0025)[0]
 
     assert np.unravel_index(np.argmax(np.abs(raw)), raw.shape) == (9, 11)
     assert np.unravel_index(np.argmax(np.abs(sharp)), sharp.shape) == (9, 11)
@@ -142,6 +142,24 @@ def test_whitening_sharpens_a_blurred_receptive_field():
         neighbourhood = np.abs(image[ring]).sum() - np.abs(image[9, 11])
         return neighbourhood / np.abs(image[9, 11])
     assert spread(raw) > 5 * spread(sharp)
+
+
+def test_covariance_and_whitening_are_the_standard_pipelines():
+    """The pipeline's load_swn_stimulus and decorrelate_spatial_stas, written out as it writes
+    them: np.cov of the stimulus in 0..1, 5.0 on the diagonal, np.linalg.solve cell by cell."""
+    rng = np.random.default_rng(4)
+    stimulus = shifting_noise(rng, n_checks=4, shifts=3, n_frames=3000)
+    matrix = stimulus.reshape(len(stimulus), -1) / 255.0
+    C_I = np.cov(matrix.T) + np.eye(matrix.shape[1]) * 5.0
+
+    cov = sta_mod.stimulus_covariance(stimulus, chunk=700)      # chunks that do not divide it
+    np.testing.assert_allclose(cov + np.eye(cov.shape[0]) * 5.0, C_I, rtol=0, atol=1e-10)
+
+    spatial = rng.normal(size=(3,) + stimulus.shape[1:]).astype(np.float32)
+    got = sta_mod.whiten(spatial, cov)                           # the default sigma
+    for cell, image in zip(got, spatial):
+        expected = np.linalg.solve(C_I, image.flatten()).reshape(image.shape)
+        np.testing.assert_allclose(cell, expected / np.max(np.abs(expected)), atol=1e-5)
 
 
 def test_stitch_puts_electrode_row_zero_first_so_plus_y_is_up():
