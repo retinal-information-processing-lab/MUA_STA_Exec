@@ -281,6 +281,25 @@ class Pipeline:
         for step in self.steps():
             self.run(step, progress, force=force)
 
+    def load_cached(self, step: str) -> bool:
+        """Bring ``step``'s cached result into memory, never computing it; False if it is not
+        cached. The dots read the cache on disk, so after a restart a line can be green with
+        nothing loaded — this is what lets its button show it without running it again."""
+        step_key = self.step_key(step)
+        if step_key is None:
+            return False
+        if self._loaded.get(step) == step_key:
+            return True
+        try:
+            cached = self.cache.load(step, step_key)
+        except (OSError, ValueError, KeyError):
+            return False
+        if cached is None:
+            return False
+        self._adopt(step, cached)
+        self._loaded[step] = step_key
+        return True
+
     def _adopt(self, step: str, cached: dict):
         """Take a cached entry as this step's result."""
         if step == ca.TRACE:

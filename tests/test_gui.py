@@ -4,7 +4,7 @@ import pytest
 
 from mua_sta import cache as ca
 from mua_sta import stimulus as st
-from mua_sta.pipeline import GROUPS
+from mua_sta.pipeline import GROUPS, Pipeline
 
 pytest.importorskip("PyQt6")
 pytest.importorskip("matplotlib")
@@ -348,6 +348,30 @@ def test_the_trigger_button_shows_what_was_read_and_never_reads(window, monkeypa
                         lambda *a, **k: pytest.fail("the trigger button read the recording"))
     window._show_trigger_plot()
     assert "Run Triggers and spikes first" in window.status.text()
+
+
+def test_a_green_line_shows_what_it_cached_after_a_restart(window, monkeypatch):
+    """The dots read the cache on disk, so a restarted window is all green with nothing in
+    memory. Each button then shows what was cached rather than asking for a run that has
+    already been done — and still never computes anything itself."""
+    seed_spikes(window.pipeline)
+    window.pipeline.run_all()
+    cache = window.pipeline.cache
+    window.pipeline = Pipeline(window.config, log=window._log)      # as on a fresh start
+    window.pipeline.cache = cache
+    window._refresh()
+    assert set(dots(window).values()) == {GREEN}
+    monkeypatch.setattr(Pipeline, "_compute",
+                        lambda *a, **k: pytest.fail("a view button computed a step"))
+    shown = []
+    monkeypatch.setattr(TriggerPlot, "exec", lambda self: shown.append("triggers"))
+    monkeypatch.setattr(FramePreview, "exec", lambda self: shown.append(self.note.text()))
+    window._on_extra("recording")
+    window._on_extra("stimulus")
+    window._on_extra("sta")
+    assert shown[0] == "triggers" and "novel frame 0" in shown[1]
+    assert window.results_window is not None
+    window.results_window.close()
 
 
 def test_only_an_sta_opens_the_results(window):

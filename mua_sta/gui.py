@@ -327,12 +327,18 @@ class Window(QtWidgets.QMainWindow):
         if group == "recording":
             self._show_trigger_plot()
         elif group == "stimulus":
+            if self.pipeline.stimulus is None:
+                self.pipeline.load_cached(ca.STIMULUS)
             FramePreview(self.config, self.pipeline.stimulus, self).exec()
         else:
             self._show_results()
 
     def _show_trigger_plot(self):
-        """Show the trace that has been read, never read it: that is the step's job."""
+        """Show the trace that has been read or cached, never read it: that is the step's job."""
+        if self.pipeline.trace is None:
+            self.pipeline.load_cached(ca.TRACE)
+        if self.pipeline.triggers is None:
+            self.pipeline.load_cached(ca.TRIGGERS)
         if self.pipeline.trace is None:
             self._log("Run Triggers and spikes first: the trigger channel has not been read",
                       "warn")
@@ -341,6 +347,8 @@ class Window(QtWidgets.QMainWindow):
                     self.pipeline.triggers, self).exec()
 
     def _show_results(self):
+        if self.pipeline.results is None:
+            self.pipeline.load_cached(ca.ANALYSIS)
         if self.pipeline.results is None:
             self._log("Nothing to show yet: run the STA step", "warn")
             return
