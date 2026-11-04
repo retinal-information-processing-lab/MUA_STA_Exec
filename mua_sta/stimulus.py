@@ -178,6 +178,8 @@ class CheckerboardSpec:
     mea: int
     pixels_per_check: int = 16      # how wide a check was drawn on the DMD
     kind: str = CHECKERBOARD
+    #: No playlist says how long it is: as many frames are built as the triggers say were shown.
+    sized_by_triggers = True
 
     @property
     def grid_shape(self) -> tuple[int, int]:
@@ -241,6 +243,10 @@ class SwnSpec:
     mea: int
     auto_lattice: bool = False      # measure the two above from the frames, when the step runs
     kind: str = SWN
+    #: The vec says how many novel frames there are, so it is rebuilt from the files alone —
+    #: before the recording is converted, or with another one loaded — and the STA then uses
+    #: as many of those frames as the recording's triggers ask for.
+    sized_by_triggers = False
 
     @property
     def n_cells(self) -> int:
@@ -270,23 +276,24 @@ class SwnSpec:
         return replace(self, checks_per_side=checks, shifts_per_check=shifts,
                        auto_lattice=False)
 
-    def cache_deps(self, n_frames: int) -> dict:
+    def cache_deps(self, n_frames: int | None = None) -> dict:
         # When the lattice is measured it is a function of the file alone, so the file's
-        # identity stands in for the two numbers and the key needs no reading to compute.
+        # identity stands in for the two numbers and the key needs no reading to compute. The
+        # vec's identity likewise stands in for how many frames it plays.
         from .cache import file_identity
         lattice = ({"lattice": "auto"} if self.auto_lattice
                    else {"checks_per_side": self.checks_per_side,
                          "shifts_per_check": self.shifts_per_check})
-        return {"kind": self.kind, "bin": file_identity(self.bin_path),
-                "vec": file_identity(self.vec_path), "mea": self.mea,
-                "n_frames": n_frames, **lattice}
+        deps = {"kind": self.kind, "bin": file_identity(self.bin_path),
+                "vec": file_identity(self.vec_path), "mea": self.mea, **lattice}
+        if n_frames is not None:
+            deps["n_frames"] = n_frames
+        return deps
 
-    def build(self, n_frames: int,
+    def build(self, n_frames: int | None = None,
               progress: Callable[[int, int, str], None] | None = None) -> np.ndarray:
-        """The novel frames in the order they were shown, ``(n_frames, cells, cells)`` uint8.
-
-        Stops as soon as ``n_frames`` have been collected, so a recording that was cut short
-        does not pay for the rest of the library.
+        """The novel frames in the order they were shown, ``(n_frames, cells, cells)`` uint8:
+        every one the vec plays, or only the first ``n_frames``.
         """
         spec = self.resolved()
         if spec is not self:
@@ -294,6 +301,8 @@ class SwnSpec:
         _, frame_indices = read_vec(self.vec_path)
         n_novel = novel_frame_count(frame_indices)
         novel = frame_indices[frame_indices < n_novel]
+        if n_frames is None:
+            n_frames = int(novel.size)
         if novel.size < n_frames:
             raise ValueError(
                 f"{self.vec_path.name} plays {novel.size} novel frames but the recording's "

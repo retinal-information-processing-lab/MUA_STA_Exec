@@ -187,6 +187,41 @@ def test_unknown_steps_before_a_recording_is_chosen(setup):
         pipeline.run(ca.TRIGGERS)
 
 
+def test_an_swn_stimulus_is_rebuilt_without_a_recording(setup):
+    """The vec says how many novel frames there are, so the stimulus runs from the files alone
+    — while the recording is still being converted, or with another one loaded."""
+    config, tmp_path = setup
+    config.recording_path = ""
+    pipeline = build(config, tmp_path)
+    assert pipeline.status(ca.STIMULUS) is ca.Status.MISSING
+    pipeline.run(ca.STIMULUS)
+    assert pipeline.triggers is None
+    assert pipeline.stimulus.shape[0] == N_SEQUENCES * (FRAMES_PER_SEQUENCE // 2)
+    assert pipeline.status(ca.STIMULUS) is ca.Status.CACHED
+
+
+def test_a_stimulus_shorter_than_the_recording_is_caught_at_the_sta(setup):
+    config, tmp_path = setup
+    n_novel = (N_SEQUENCES - 1) * (FRAMES_PER_SEQUENCE // 2)        # a sequence short
+    config.swn_vec = str(write_vec(tmp_path / "short.vec", novel_then_repeated(n_novel)))
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run(ca.STIMULUS)
+    with pytest.raises(ValueError, match="Was this stimulus shown during rec.raw"):
+        pipeline.run_all()
+
+
+def test_a_recording_cut_short_uses_the_first_frames_of_the_stimulus(setup):
+    config, tmp_path = setup
+    n_novel = (N_SEQUENCES + 1) * (FRAMES_PER_SEQUENCE // 2)        # a sequence never shown
+    config.swn_vec = str(write_vec(tmp_path / "long.vec", novel_then_repeated(n_novel)))
+    pipeline = build(config, tmp_path)
+    seed_spikes(pipeline)
+    pipeline.run_all()
+    assert pipeline.stimulus.shape[0] == n_novel
+    assert pipeline.results.meta["n_sequences"] == N_SEQUENCES
+
+
 def test_force_recomputes_one_step(setup):
     config, tmp_path = setup
     pipeline = build(config, tmp_path)

@@ -157,10 +157,13 @@ class Pipeline:
                               freq_max=config.freq_max,
                               common_reference=config.common_reference)
             if step == ca.STIMULUS:
+                spec = config.stimulus_spec()
+                if not spec.sized_by_triggers:
+                    return ca.key(**spec.cache_deps())
                 n_frames = self.stimulus_frame_count()
                 if n_frames is None:
                     return None
-                return ca.key(**config.stimulus_spec().cache_deps(n_frames))
+                return ca.key(**spec.cache_deps(n_frames))
             if step == ca.COV:
                 stimulus_key = self.step_key(ca.STIMULUS)
                 if stimulus_key is None:
@@ -257,9 +260,15 @@ class Pipeline:
         return int(cached["onsets"].size // self.config.frames_per_sequence)
 
     # ----------------------------------------------------------------- the steps
+    def dependencies(self, step: str) -> tuple[str, ...]:
+        """What ``step`` needs first. A stimulus whose playlist sizes it needs no recording."""
+        if step == ca.STIMULUS and not self.config.stimulus_spec().sized_by_triggers:
+            return ()
+        return DEPENDENCIES[step]
+
     def run(self, step: str, progress: Progress | None = None, force: bool = False):
         """Make ``step`` available, running whatever it needs that is not cached."""
-        for dependency in DEPENDENCIES[step]:
+        for dependency in self.dependencies(step):
             self.run(dependency, progress)
         step_key = self.step_key(step)
         if step_key is None:
@@ -367,8 +376,10 @@ class Pipeline:
         if hasattr(spec, "resolved"):
             # reading the frames to measure the lattice happens here and nowhere earlier
             spec = spec.resolved()
-        n_frames = self.stimulus_frame_count()
-        self.log(f"Rebuilding {st.KIND_LABELS[spec.kind]}: {n_frames} novel frames on a "
+        n_frames = self.stimulus_frame_count() if spec.sized_by_triggers else None
+        frames = (f"{n_frames} novel frames" if n_frames is not None
+                  else f"every novel frame of {spec.vec_path.name}")
+        self.log(f"Rebuilding {st.KIND_LABELS[spec.kind]}: {frames} on a "
                  f"{spec.grid_shape[0]}x{spec.grid_shape[1]} grid"
                  + (f", {spec.cell_size_um:.1f} µm per cell" if spec.cell_size_um else ""),
                  "info")
@@ -409,6 +420,13 @@ class Pipeline:
         mapping = rec.load_mapping()
         labels = np.array(rec.electrode_labels(mapping), dtype=np.int32)
         n_sequences = self.triggers.n_sequences(config.frames_per_sequence)
+        needed = n_sequences * (config.frames_per_sequence // 2)
+        if self.stimulus.shape[0] < needed:
+            # an SWN stimulus is built from its vec alone, so this is where a mismatch shows
+            raise ValueError(
+                f"The stimulus has {self.stimulus.shape[0]} novel frames but this recording's "
+                f"triggers ask for {needed} ({n_sequences} sequences). Was this stimulus shown "
+                f"during {self.ensure_info().path.name}?")
         novel = sta_mod.sequence_edges(self.triggers.times, n_sequences,
                                        config.frames_per_sequence, sta_mod.NOVEL_HALF)
         repeated = sta_mod.sequence_edges(self.triggers.times, n_sequences,
