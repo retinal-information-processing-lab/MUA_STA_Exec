@@ -62,7 +62,8 @@ size, the display polarity and optics, and how the array sits in the stimulus. N
 the trigger channel, 126 — the visual trigger, the same one the standard pipeline reconstructs
 from.
 
-**Recording**: the `.raw` file, with its size and duration underneath.
+**Recording**: the recording file, `.mcd` or `.raw`, with its format, size and duration
+underneath.
 
 **The three lines** are the run, split where the work is:
 
@@ -262,17 +263,34 @@ is right for one rig and wrong for the other), the SWN lattice detector against 
 rendered at a fractional scale, the fast STA against a plain reference loop, the whitening on a
 synthetic shifting stimulus, what the cache considers stale, and the window itself headless.
 
+The `.mcd` reader is tested three ways: against a synthetic recording built from
+`MCD_FORMAT.md` in `tests/mcdbuilder.py`, which exercises the spec as a writer; against the
+`.raw` exports of real recordings, skipped where they are not mounted; and for the two
+properties that are not obvious from the code — that the recording survives being pickled, the
+way a Windows worker process receives it, and that several threads reading it at once each get
+their own data. One test reads a whole 19 GB recording twice and is kept out of the way behind
+`MUA_STA_SLOW_TESTS=1 pytest`.
+
 ---
 
-## Next: reading `.mcd` directly
+## Reading `.mcd` directly
 
-Recordings arrive as `.mcd` and are converted to `.raw` with MC_DataTool by hand, which costs
-time and doubles the disk use (19 GB each). That step is about to go away: the format is a
-plain chunked container, and its electrode payloads are **byte-identical** to the `.raw`
-MC_DataTool produces — checked on chunks 0, 1, 2, 9000 and 18487 of a 19 GB recording, with the
-chunk count matching the `.raw`'s sample count exactly.
+Recordings arrive from MC_Rack as `.mcd`. They used to be converted to `.raw` with MC_DataTool
+by hand, which costs time, doubles the disk use (19–22 GB each) and depends on an unsupported
+vendor binary. The tool now reads either format, so that step is gone: choose the `.mcd` and
+run.
 
-What is in the file, for whoever writes `mua_sta/mcd.py`:
+It is the same data either way. An `.mcd` is a plain chunked container whose electrode payloads
+are **byte-identical** to the `.raw` MC_DataTool exports from it — verified across 25.36 GB,
+every byte of two recordings, with `to_raw()` reproducing MC_DataTool's output exactly. So no
+result can depend on which form it was computed from, and `tests/test_mcd_vs_raw.py` asserts
+that on recordings that exist in both.
+
+`mua_sta/mcd.py` is the reader. It is maintained in `/mnt/Extra/mcd_format_test/`, next to
+`MCD_FORMAT.md` (the byte-level spec), and vendored here verbatim so a plain `git clone` can
+open a recording; the two copies are meant to stay identical and `diff` is the drift check.
+
+What is in the file:
 
 | | |
 |---|---|
@@ -285,8 +303,24 @@ What is in the file, for whoever writes `mua_sta/mcd.py`:
 | data | one chunk per stream per 0.1 s block, each payload a 16-byte sub-header (two timestamps, the same in both streams of a block) then the samples |
 | samples | channel-interleaved `uint16`, 2000 samples × 256 channels per analog chunk |
 
-Only `mua_sta/recording.py` has to change: everything else goes through it. The `.raw` branch
-goes away with it, along with the channel-count, sample-format and sampling-rate boxes, since
-the header states all three. Other recordings may be different variants (another stream, a
+Only `mua_sta/recording.py` knows which of the two it has. It tells them apart by the
+`MCSSTRM` magic rather than by the file name, so a renamed recording is still recognised and a
+`.raw` that happens to be called `.mcd` is not mistaken for one. For a `.mcd` the header is the
+authority on the channel count, the sample format, the sampling rate and the µV per ADC level,
+so none of them has to be typed in anywhere; a `.raw` has no header and keeps the defaults, 256
+channels of `uint16` at 20 kHz. Other recordings may be different variants (another stream, a
 different device or chunk size), so the reader parses the header rather than assuming offsets,
 and fails loudly with the stream table printed.
+
+Spike detection gets the recording through `mua_sta/mcdextractor.py`, a spikeinterface
+extractor deliberately as bare as `read_binary` on the matching `.raw`: same dtype, same
+channel order, same channel ids, no gains set, so both paths hand the detector the same
+numbers. It carries nothing but the file path in its state, because the worker pool is started
+with `spawn` on Windows and pickles the recording, and each segment opens its own reader — one
+per process *and* per thread, since reading seeks a shared handle.
+
+A `.mcd` is never opened writable. It is the rawest copy of an irreplaceable recording, and
+MC_Rack leaves recordings read/write, so file permissions protect nothing: the reader opens one
+`O_RDONLY` and refuses any write whose target is a recording, by content as well as by name.
+`tests/test_mcd_safety.py` checks that the package still has that property, by auditing its own
+source for write-mode opens as well as by exercising the guards.
