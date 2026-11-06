@@ -99,6 +99,7 @@ class Window(QtWidgets.QMainWindow):
         recording = QtWidgets.QHBoxLayout()
         recording.addWidget(QtWidgets.QLabel("Recording"))
         self.recording_row = FileRow(self.config.recording_path, "Select a recording",
+                                     "Recordings (*.mcd *.raw);;MCD recordings (*.mcd);;"
                                      "Raw recordings (*.raw);;All files (*)")
         self.recording_row.changed.connect(self._on_recording)
         recording.addWidget(self.recording_row, stretch=1)

@@ -336,7 +336,7 @@ class Pipeline:
     def _compute_trace(self, step_key: str, progress: Progress | None):
         info = self.ensure_info()
         self.log(f"Reading channel {self.config.trigger_channel} of {info.path.name} "
-                 f"({info.describe()})", "info")
+                 f"({info.describe()}, {info.uv_per_level:.7g} µV/level)", "info")
         self.trace = rec.read_channel(info, self.config.trigger_channel, progress=progress)
         self.cache.store(ca.TRACE, step_key, meta={"n_samples": int(self.trace.size)},
                          levels=self.trace)
